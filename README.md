@@ -20,42 +20,19 @@ Enterprise-grade Exchange/EWS mail gateway built with FastAPI. Provides secure R
 
 ### Prerequisites
 
-- Python 3.11+
 - Docker & Docker Compose
 - Exchange/Office 365 account
 
-### Development
+### Deployment
 
 ```bash
 # Clone the repository
 git clone https://github.com/f148002/exchange-gateway.git
 cd exchange-gateway
 
-# Setup secrets for development
-./scripts/setup-secrets.sh --dev
-
-# Start services
-docker compose -f docker-compose.dev.yml up -d
-```
-
-### Production
-
-```bash
-# Clone the repository
-git clone https://github.com/f148002/exchange-gateway.git
-cd exchange-gateway
-
-# Configure SSL certificates
-mkdir -p ssl
-cp /path/to/your/certificate.crt ssl/exchange.crt
-cp /path/to/your/private.key ssl/exchange.key
-
-# Setup secrets (requires root)
-sudo ./scripts/setup-secrets.sh
-
-# Configure environment variables
+# Copy and edit environment configuration
 cp .env.example .env
-# Edit .env to customize settings
+# Edit .env to configure your Exchange server
 
 # Start services
 docker compose up -d
@@ -65,9 +42,10 @@ docker compose up -d
 
 | Service | URL |
 |---------|-----|
-| Admin Dashboard | `https://your-server:<ssl-port>` |
-| API Docs | `https://your-server:<ssl-port>/docs` |
-| Health Check | `https://your-server:<ssl-port>/api/v1/exchange/health` |
+| Admin Dashboard | `http://localhost:80` |
+| API Docs | `http://localhost:80/docs` |
+| App Direct | `http://localhost:18001` |
+| Health Check | `http://localhost:18001/api/v1/exchange/health` |
 
 ## API Usage
 
