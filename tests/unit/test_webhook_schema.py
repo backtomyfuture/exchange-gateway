@@ -10,11 +10,11 @@ def test_private_webhook_url_allowed_when_feature_enabled(monkeypatch):
 
     payload = WebhookCreate(
         account_id=1,
-        url="http://10.78.14.164:15000/webhooks/exchange",
+        url="http://10.0.0.1:15000/webhooks/exchange",
         secret="12345678",
     )
 
-    assert payload.url.host == "10.78.14.164"
+    assert payload.url.host == "10.0.0.1"
 
 
 def test_private_webhook_url_blocked_when_feature_disabled(monkeypatch):
@@ -23,7 +23,7 @@ def test_private_webhook_url_blocked_when_feature_disabled(monkeypatch):
     with pytest.raises(ValidationError, match="禁止使用内部网络地址"):
         WebhookCreate(
             account_id=1,
-            url="http://10.78.14.164:15000/webhooks/exchange",
+            url="http://10.0.0.1:15000/webhooks/exchange",
             secret="12345678",
         )
 
