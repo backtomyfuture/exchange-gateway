@@ -1,0 +1,127 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+!web/build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Environments
+.env
+.env.local
+.env.*.local
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Logs
+*.log
+/logs/
+app/logs/
+!web/src/views/**/logs/
+
+# Database
+*.db
+*.sqlite3
+db.sqlite3
+
+# Secrets - 绝对不要提交！
+.secrets/
+secrets/
+*.pem
+*.key
+
+# Docker
+.docker/
+.docker-data/
+
+# Aerich migrations (可选：如果希望版本控制迁移文件，删除此行)
+# migrations/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Node.js (web 目录)
+web/node_modules/
+web/.pnpm-store/
+web/dist/
+web/.env
+web/.env.local
+web/.env.*.local
+web/*.local
+
+# Temporary files
+*.tmp
+*.temp
+.temp/
+tmp/
+
+# IDE agent configs
+.agent/
+.claude/

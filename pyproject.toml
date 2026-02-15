@@ -1,0 +1,58 @@
+[project]
+name = "exchange-gateway"
+version = "0.1.0"
+description = "Enterprise-grade Exchange/EWS mail gateway with REST API and Webhook support"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Jarod Fu", email = "f148002@gmail.com" }
+]
+keywords = ["exchange", "ews", "email", "fastapi", "webhook", "mail-gateway"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Framework :: FastAPI",
+]
+
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "tortoise-orm>=0.23.0",
+    "aerich>=0.8.1",
+    "exchangelib>=5.6.0",
+    "cryptography>=44.0.0",
+    "pyjwt>=2.10.1",
+    "passlib>=1.7.4",
+    "argon2-cffi>=23.1.0",
+    "python-dotenv>=1.0.1",
+    "pydantic>=2.10.5",
+    "pydantic-settings>=2.7.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.9.0",
+]
+
+[tool.aerich]
+tortoise_orm = "app.aerich_config.TORTOISE_ORM"
+location = "./migrations"
+src_folder = "./."
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

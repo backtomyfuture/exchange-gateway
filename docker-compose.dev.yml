@@ -1,0 +1,165 @@
+# 开发/测试环境配置
+# 使用方法：COMPOSE_BAKE=0 docker compose -f docker-compose.dev.yml up -d
+#
+# 首次使用请先运行初始化脚本创建 secrets 目录：
+#   Mac/Linux: ./scripts/setup-secrets.sh --dev
+#
+# 清理测试数据：rm -rf .docker-data
+
+services:
+  # ===========================================
+  # MySQL 数据库
+  # ===========================================
+  mysql:
+    image: mysql:8.0
+    container_name: vue-fastapi-admin-mysql
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-vue_fastapi_admin}
+      MYSQL_USER: ${MYSQL_USER:-admin}
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
+    ports:
+      - "13306:3306" # 开发环境暴露端口便于调试
+    volumes:
+      - ./.docker-data/mysql:/var/lib/mysql
+    secrets:
+      - mysql_root_password
+      - mysql_password
+    networks:
+      - backend
+
+  # ===========================================
+  # FastAPI 应用
+  # ===========================================
+  app:
+    image: exchange-app:latest
+    container_name: vue-fastapi-admin-app
+    restart: unless-stopped
+    environment:
+      - DEBUG=true
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=${DB_USER:-admin}
+      - DB_PASSWORD_FILE=/run/secrets/db_password
+      - DB_NAME=${DB_NAME:-vue_fastapi_admin}
+      - SECRET_KEY_FILE=/run/secrets/secret_key
+      - WORKERS=${WORKERS:-2}
+      # Exchange 邮件服务配置
+      - EXCHANGE_SERVER=${EXCHANGE_SERVER:-10.72.8.110}
+      - EXCHANGE_DOMAIN=${EXCHANGE_DOMAIN:-hnanet}
+      - EXCHANGE_EMAIL_SUFFIX=${EXCHANGE_EMAIL_SUFFIX:-@tianjin-air.com}
+      - EXCHANGE_ENCRYPTION_KEY_FILE=/run/secrets/exchange_encryption_key
+      - WEBHOOK_ALLOW_PRIVATE_URLS=true
+      - LOGS_ROOT=/var/log/app # 日志目录
+    ports:
+      - "18001:8000" # 开发环境暴露端口便于调试
+    # healthcheck removed for stability
+    depends_on:
+      - mysql
+
+    secrets:
+      - db_password
+      - secret_key
+      - exchange_encryption_key
+    volumes:
+      - ./app:/opt/app/app:ro # 只读挂载，便于热重载（需配合 --reload）
+      - ./.docker-data/logs:/var/log/app # 日志挂载到独立路径
+      - ./pyproject.toml:/opt/app/pyproject.toml:ro
+      - ./migrations:/opt/app/migrations:ro
+    networks:
+      - backend
+      - frontend
+
+
+
+  # ===========================================
+  # Webhook 监听 Worker
+  # ===========================================
+  webhook-worker:
+    # build:
+    #   context: .
+    #   dockerfile: deploy/app/Dockerfile
+    image: exchange-app:latest
+    container_name: vue-fastapi-admin-webhook-worker
+    restart: unless-stopped
+    entrypoint: [ "python3", "-m", "app.services.exchange.webhook_listener" ]
+    environment:
+      - DEBUG=true
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=${DB_USER:-admin}
+      - DB_PASSWORD_FILE=/run/secrets/db_password
+      - DB_NAME=${DB_NAME:-vue_fastapi_admin}
+      - SECRET_KEY_FILE=/run/secrets/secret_key
+      - EXCHANGE_ENCRYPTION_KEY_FILE=/run/secrets/exchange_encryption_key
+      - WEBHOOK_ALLOW_PRIVATE_URLS=true
+      - LOGS_ROOT=/var/log/app
+    healthcheck:
+      disable: true
+    depends_on:
+      - mysql
+      - app
+
+    secrets:
+      - db_password
+      - secret_key
+      - exchange_encryption_key
+    volumes:
+      - ./app:/opt/app/app:ro
+      - ./migrations:/opt/app/migrations
+      - ./.docker-data/logs:/var/log/app
+    networks:
+      - backend
+
+  # ===========================================
+  # Nginx 反向代理 + 静态文件服务
+  # ===========================================
+  nginx:
+    build:
+      context: .
+      dockerfile: deploy/nginx/Dockerfile
+    container_name: vue-fastapi-admin-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-19999}:80"
+    volumes:
+      - ./deploy/nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app
+
+    networks:
+      - frontend
+
+# ===========================================
+# Secrets（开发环境存储在项目目录）
+# ===========================================
+secrets:
+  mysql_root_password:
+    file: ./.secrets/mysql_root_password
+  mysql_password:
+    file: ./.secrets/mysql_password
+  db_password:
+    file: ./.secrets/db_password
+  secret_key:
+    file: ./.secrets/secret_key
+  exchange_encryption_key:
+    file: ./.secrets/exchange_encryption_key
+
+# ===========================================
+# 网络
+# ===========================================
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+
+# ===========================================
+# 数据卷（已改为项目目录下的绑定挂载）
+# ===========================================
+# 所有数据存储在 .docker-data/ 目录下
+# 清理方法: rm -rf .docker-data/

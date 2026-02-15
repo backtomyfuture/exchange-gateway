@@ -1,0 +1,81 @@
+---
+description: Exchange服务器项目总览与改造约束（FastAPI/Exchange/Lark/Docker）
+alwaysApply: true
+---
+
+# 项目上下文（Exchange Server）
+
+## 1) 技术栈与定位
+- 后端：FastAPI + Gunicorn + Tortoise ORM + Aerich + MySQL。
+- 邮件：`exchangelib` 对接 Exchange/EWS（同步库，异步层通过 `run_in_executor` 包装）。
+- 飞书：`lark-oapi`，使用 WebSocket + 多维表格驱动邮件任务。
+- 部署：Docker Compose，多容器协作。
+
+## 2) Docker 部署约定（必须遵循）
+- 本地/测试环境：`docker-compose.dev.yml`。
+- 生产环境：`docker-compose.yml`。
+- 服务角色：
+  - `app`：FastAPI API 服务。
+  - `lark-ws`：飞书 WebSocket 独立进程（非 app worker 内运行）。
+  - `webhook-worker`：Exchange 事件监听与 webhook 分发。
+  - `mysql`：数据库。
+  - `nginx`：反向代理和前端静态资源。
+
+## 3) 启动与初始化链路
+- 应用入口：`app/__init__.py`，`app = create_app()`。
+- 容器入口：`deploy/app/entrypoint.sh`（等待 DB 后启动 gunicorn）。
+- lifespan 初始化：
+  - `init_data()`（DB/默认用户/菜单/API/角色）。
+  - `recover_pending_emails()`（恢复 pending 邮件任务）。
+  - `recovery_service.start()`（飞书任务恢复调度）。
+- 注意：默认启动不自动做 Aerich 迁移，迁移需单独执行。
+
+## 4) 业务模块边界
+- Exchange 域：`app/services/exchange/*`
+  - `account_service`：账户/API Key/统计。
+  - `email_service`：发信、草稿、收信、搜索、同步、回复、转发。
+  - `template_service`：模板 CRUD 与变量渲染。
+  - `connection_pool`：Exchange 连接复用与健康检查。
+  - `webhook_service` + `webhook_listener`：订阅管理与事件分发。
+- Lark 域：`app/services/lark/*`
+  - `ws_manager` + `lark_ws_runner`：WS 生命周期与自动重连。
+  - `event_handler`：事件幂等、状态流转、执行分发。
+  - `task_queue_service`：任务队列（订阅配置）管理。
+  - `handlers/email_handler`：从多维表格组装邮件请求并调用 Exchange 发信。
+  - `recovery_service`：处理“处理中”卡死任务。
+
+## 5) 认证与权限模型
+- 管理后台：JWT + RBAC（`DependPermission`）。
+- 外部业务接口：API Key（权限粒度到 send/receive/search/sync/read/reply/forward/contacts/webhook）。
+- 混合路径：部分接口同时支持 JWT 与 API Key（例如 webhook 管理）。
+
+## 6) 关键路由结构
+- 总入口：`/api/v1/*`，健康检查独立在 `/health*`。
+- Exchange：`/exchange/{health,emails,accounts,api-keys,templates,contacts,webhooks}`。
+- Lark：`/lark/{apps,task-queues,events,ws}`。
+
+## 7) 当前测试覆盖结论
+- 已覆盖：账户/API Key/模板、部分邮件服务、Lark 事件处理与队列、连接池、部分 API 路由。
+- 薄弱区：Webhook 全链路、并发与幂等边界、API Key 认证异常路径、Docker compose 级联联调。
+
+## 8) 高风险改造区（改动前优先评估）
+- `ws_control` 与独立 `lark-ws` 容器的控制语义一致性。
+- `.dockerignore` 与 Nginx SSL key 打包冲突风险（`*.key` 过滤）。
+- 迁移流程与运行时 schema 一致性（避免“代码变更但未迁移”）。
+- Webhook listener 的线程 + asyncio 混合模型稳定性。
+
+## 9) 改造时的硬性约束
+- 不要把 Lark WS 再放回 FastAPI worker 内。
+- 涉及数据模型字段变更时，必须同步迁移策略与回滚策略。
+- 涉及 API Key 权限逻辑时，必须同时检查路由依赖与服务层账户白名单校验。
+- 涉及邮件发送链路时，必须考虑 pending 恢复与失败重试行为。
+
+## 10) 关键问题修复记录
+- **Exchange SSL 兼容性**：
+  - 问题：连接旧版 Exchange Server (10.72.8.110) 时报错 `SSLEOFError: EOF occurred in violation of protocol`。
+  - 原因：客户端 OpenSSL 安全级别过高 (Default SECLEVEL=2)，服务器不支持现代重协商协议。且服务器证书域名与 IP 不匹配。
+  - 解决方案：引入 `app/utils/exchange_adapter.py` 中的 `LegacySSLAdapter`。
+    - 设置 `SECLEVEL=1`。
+    - 允许 `OP_LEGACY_SERVER_CONNECT`。
+    - 禁用主机名校验 `assert_hostname=False`。
+  - 必须在 `connection_pool` 和 `webhook_listener` 中替换默认的 `NoVerifyHTTPAdapter`。
