@@ -106,8 +106,12 @@ services:
     build:
       context: .
       dockerfile: deploy/nginx/Dockerfile
+      args:
+        NGINX_ENV: ${NGINX_ENV:-prod}
     container_name: exchange-gateway-nginx
     restart: unless-stopped
+    environment:
+      - NGINX_ENV=${NGINX_ENV:-prod}
     ports:
       - "${NGINX_PORT:-80}:80"
     depends_on:
