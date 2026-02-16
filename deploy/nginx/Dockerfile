@@ -24,7 +24,11 @@ FROM nginx:1.25-alpine
 # prod: 使用 nginx.conf (HTTPS)
 ARG NGINX_ENV=prod
 
-# 复制 nginx 配置文件（根据 NGINX_ENV 选择）
+# 先复制配置文件到镜像
+COPY deploy/nginx/nginx.conf /deploy/nginx/nginx.conf
+COPY deploy/nginx/nginx.dev.conf /deploy/nginx/nginx.dev.conf
+
+# 根据 NGINX_ENV 选择配置文件
 RUN if [ "$NGINX_ENV" = "dev" ]; then \
         echo "Using development nginx config (HTTP)" && \
         cp /deploy/nginx/nginx.dev.conf /etc/nginx/nginx.conf; \
@@ -32,10 +36,6 @@ RUN if [ "$NGINX_ENV" = "dev" ]; then \
         echo "Using production nginx config (HTTPS)" && \
         cp /deploy/nginx/nginx.conf /etc/nginx/nginx.conf; \
     fi
-
-# 复制配置文件到镜像
-COPY deploy/nginx/nginx.conf /deploy/nginx/nginx.conf
-COPY deploy/nginx/nginx.dev.conf /deploy/nginx/nginx.dev.conf
 
 # 仅在生产模式复制 SSL 证书
 RUN if [ "$NGINX_ENV" = "prod" ]; then \
