@@ -76,6 +76,13 @@ else
     echo "WARNING: DEV_MODE enabled, Exchange configuration validation skipped"
 fi
 
+# 执行数据库迁移（在启动 gunicorn 之前）
+# 只有在 AUTO_MIGRATE=true 或未设置时才执行
+if [ "${AUTO_MIGRATE:-true}" = "true" ] || [ "${AUTO_MIGRATE:-true}" = "1" ]; then
+    echo "Running database migration..."
+    python -m app.utils.db_migrate || echo "Warning: Migration failed, will retry in app startup"
+fi
+
 # 使用 exec 替换当前进程，确保信号能正确传递到 gunicorn
 exec gunicorn "${APP_MODULE}" \
     --workers "${WORKERS}" \

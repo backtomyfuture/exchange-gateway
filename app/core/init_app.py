@@ -73,13 +73,11 @@ def register_routers(app: FastAPI, prefix: str = "/api"):
 async def init_superuser():
     """
     初始化超级用户
-    仅当管理员用户不存在时才创建，避免重复创建导致冲突
+    使用异常处理避免多 worker 竞态条件
     """
-    from app.models.admin import User
+    from tortoise.exceptions import IntegrityError
 
-    # 检查 admin 用户是否已存在
-    admin_exists = await User.get_or_none(username="admin")
-    if not admin_exists:
+    try:
         await user_controller.create_user(
             UserCreate(
                 username="admin",
@@ -89,6 +87,9 @@ async def init_superuser():
                 is_superuser=True,
             )
         )
+    except IntegrityError:
+        # 用户已存在，多 worker 竞态条件，忽略
+        pass
 
 
 async def init_menus():
