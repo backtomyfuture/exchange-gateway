@@ -150,7 +150,13 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
         """
         根据request和response对象获取对应的日志记录数据
         """
-        data: dict = {"path": request.url.path, "status": response.status_code, "method": request.method}
+        data: dict = {
+            "path": request.url.path,
+            "status": response.status_code,
+            "method": request.method,
+            "module": "",
+            "summary": request.url.path,  # 默认使用路径作为摘要
+        }
         # 路由信息
         app: FastAPI = request.app
         for route in app.routes:
