@@ -74,7 +74,9 @@ COPY --from=builder /opt/venv /opt/venv
 COPY app/ ./app/
 COPY scripts/ ./scripts/
 COPY deploy/app/entrypoint.sh .
-RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh
+COPY deploy/app/entrypoint-worker.sh .
+RUN sed -i 's/\r$//' entrypoint.sh entrypoint-worker.sh && \
+    chmod +x entrypoint.sh entrypoint-worker.sh
 
 # 创建非 root 用户
 RUN useradd --create-home --shell /bin/bash appuser

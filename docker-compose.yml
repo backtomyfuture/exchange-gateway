@@ -6,8 +6,8 @@
 #   docker compose up -d
 #
 # ENV values: "dev" or "prod"
-# - dev: DEBUG=true, HTTP only
-# - prod: DEBUG=false, HTTPS enabled
+# - dev: DEBUG=true, DEV_MODE=true, HTTP only
+# - prod: DEBUG=false, DEV_MODE=false, HTTPS enabled
 
 services:
   # ===========================================
@@ -49,8 +49,12 @@ services:
     container_name: exchange-gateway-app
     restart: unless-stopped
     environment:
-      - DEBUG=${ENV:-dev}
-      - DEV_MODE=${ENV:-dev}
+      - ENV=${ENV:-dev}
+      # DEBUG and DEV_MODE should be explicitly set based on ENV
+      # ENV=dev -> DEBUG=true, DEV_MODE=true
+      # ENV=prod -> DEBUG=false, DEV_MODE=false
+      - DEBUG=${DEBUG:-true}
+      - DEV_MODE=${DEV_MODE:-true}
       - DB_HOST=${DB_HOST:-mysql}
       - DB_PORT=${DB_PORT:-3306}
       - DB_USER=${DB_USER:-root}
@@ -84,12 +88,17 @@ services:
   # Webhook Listener Worker
   # ===========================================
   webhook-worker:
+    build:
+      context: .
+      dockerfile: deploy/app/Dockerfile
     image: exchange-app:latest
     container_name: exchange-gateway-webhook-worker
     restart: unless-stopped
-    entrypoint: ["python3", "-m", "app.services.exchange.webhook_listener"]
+    entrypoint: ["/entrypoint-worker.sh"]
     environment:
-      - DEBUG=${ENV:-dev}
+      - ENV=${ENV:-dev}
+      - DEBUG=${DEBUG:-true}
+      - DEV_MODE=${DEV_MODE:-true}
       - DB_HOST=${DB_HOST:-mysql}
       - DB_PORT=${DB_PORT:-3306}
       - DB_USER=${DB_USER:-root}
