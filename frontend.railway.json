@@ -3,10 +3,13 @@
     "build": {
         "builder": "DOCKERFILE",
         "dockerfilePath": "deploy/nginx/Dockerfile",
-        "context": "."
+        "context": ".",
+        "buildArgs": {
+            "NGINX_ENV": "dev"
+        }
     },
     "deploy": {
-        "port": 80,
+        "port": 8080,
         "numReplicas": 1,
         "sleep": false,
         "restartPolicyType": "ON_FAILURE",
