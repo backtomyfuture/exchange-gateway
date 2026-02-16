@@ -5,7 +5,11 @@
 [![Docker](https://img.shields.io/badge/docker-ready-blue)](https://www.docker.com/)
 [![Last Commit](https://img.shields.io/github/last-commit/f148002/exchange-gateway)](https://github.com/f148002/exchange-gateway)
 
-Enterprise-grade Exchange/EWS mail gateway built with FastAPI. Provides secure REST API for email operations and a complete admin dashboard.
+**Enterprise-grade Exchange/EWS mail gateway built with FastAPI.** Provides secure REST API for email operations and a complete admin dashboard.
+
+## ⚡ Quick Deploy
+
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/exchange-gateway?referralCode=YOUR_CODE)
 
 ## Features
 

@@ -1,8 +1,8 @@
 # FastAPI 应用镜像 (Multi-stage Build)
 # 支持自定义镜像源，通过 --build-arg 传入
 ARG PYTHON_IMAGE=python:3.11-slim-bullseye
-ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
-ARG APT_MIRROR=mirrors.ustc.edu.cn
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG APT_MIRROR=
 
 # Stage 1: Builder
 FROM ${PYTHON_IMAGE} as builder
@@ -16,9 +16,11 @@ WORKDIR /build
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# 安装构建依赖
-RUN sed -i "s@http://.*.debian.org@https://${APT_MIRROR}@g" /etc/apt/sources.list && \
-    sed -i "s@http://security.debian.org@https://${APT_MIRROR}/debian-security@g" /etc/apt/sources.list && \
+# 安装构建依赖 (仅在提供 APT_MIRROR 时替换源)
+RUN if [ -n "$APT_MIRROR" ]; then \
+        sed -i "s@http://.*.debian.org@https://${APT_MIRROR}@g" /etc/apt/sources.list && \
+        sed -i "s@http://security.debian.org@https://${APT_MIRROR}/debian-security@g" /etc/apt/sources.list; \
+    fi && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
     gcc \
@@ -53,8 +55,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH"
 
 # 安装运行时系统依赖 (去除构建工具，保留库文件)
-RUN sed -i "s@http://.*.debian.org@https://${APT_MIRROR}@g" /etc/apt/sources.list && \
-    sed -i "s@http://security.debian.org@https://${APT_MIRROR}/debian-security@g" /etc/apt/sources.list && \
+RUN if [ -n "$APT_MIRROR" ]; then \
+        sed -i "s@http://.*.debian.org@https://${APT_MIRROR}@g" /etc/apt/sources.list && \
+        sed -i "s@http://security.debian.org@https://${APT_MIRROR}/debian-security@g" /etc/apt/sources.list; \
+    fi && \
     ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
     echo $TZ > /etc/timezone && \
     apt-get update && \

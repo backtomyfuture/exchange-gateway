@@ -5,11 +5,15 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 # =============================================================================
-# DEV_MODE: 开发模式
-# 设置环境变量 DEV_MODE=true 可启用零配置开发模式，无需设置 SECRET_KEY 等配置
-# 警告：请勿在生产环境使用 DEV_MODE！
+# ENV: 环境模式 (dev / prod)
+# ENV=dev (默认): 自动启用 DEV_MODE 和 DEBUG，零配置即可运行
+# ENV=prod: 需要配置 SECRET_KEY、EXCHANGE_ENCRYPTION_KEY 等安全参数
 # =============================================================================
-DEV_MODE = os.getenv("DEV_MODE", "false").lower() in ("true", "1", "yes")
+ENV = os.getenv("ENV", "dev").lower()
+
+# DEV_MODE: 由 ENV 自动推导，也可通过 DEV_MODE 环境变量显式覆盖
+# ENV=dev 时默认启用，ENV=prod 时默认关闭
+DEV_MODE = os.getenv("DEV_MODE", "true" if ENV == "dev" else "false").lower() in ("true", "1", "yes")
 
 # 开发模式默认值（仅用于本地开发，请勿在生产环境使用！）
 _DEV_SECRET_KEY = "dev-secret-key-do-not-use-in-production-environment"
@@ -43,16 +47,16 @@ def get_secret(secret_name: str, default: str = "") -> str:
 
 class Settings(BaseSettings):
     VERSION: str = "1.0.0"
-    APP_TITLE: str = "Exchange Email Server"
-    PROJECT_NAME: str = "Exchange Email Server"
-    APP_DESCRIPTION: str = "Exchange邮箱服务器，提供各种接口"
+    APP_TITLE: str = "Exchange Gateway"
+    PROJECT_NAME: str = "Exchange Gateway"
+    APP_DESCRIPTION: str = "Enterprise Exchange/EWS Gateway - REST API for Microsoft Exchange Server"
 
-    CORS_ORIGINS: typing.List = (os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(","),)
+    CORS_ORIGINS: typing.List = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_METHODS: typing.List = ["*"]
     CORS_ALLOW_HEADERS: typing.List = ["*"]
 
-    # DEV_MODE 时自动启用 DEBUG，否则默认关闭
+    # ENV=dev 时自动启用 DEBUG，否则默认关闭
     DEBUG: bool = DEV_MODE or os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")
     # Webhook URL 安全策略：开发环境默认允许私网地址，生产环境默认禁止
     WEBHOOK_ALLOW_PRIVATE_URLS: bool = os.getenv(
@@ -76,7 +80,7 @@ class Settings(BaseSettings):
     DB_PORT: int = int(os.getenv("DB_PORT", "3306"))
     DB_USER: str = os.getenv("DB_USER", "admin")
     DB_PASSWORD: str = os.getenv("DB_PASSWORD", _DEV_DB_PASSWORD if DEV_MODE else "")
-    DB_NAME: str = os.getenv("DB_NAME", "vue_fastapi_admin")
+    DB_NAME: str = os.getenv("DB_NAME", "exchange_gateway")
 
     # 数据库连接池配置
     DB_POOL_MIN_SIZE: int = int(os.getenv("DB_POOL_MIN_SIZE", "5"))

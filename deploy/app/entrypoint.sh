@@ -16,7 +16,7 @@ GRACEFUL_TIMEOUT="${GRACEFUL_TIMEOUT:-30}"
 KEEP_ALIVE="${KEEP_ALIVE:-5}"
 
 echo "=========================================="
-echo "  Vue FastAPI Admin - Starting Server"
+echo "  Exchange Gateway - Starting Server"
 echo "=========================================="
 echo "  Workers:     ${WORKERS}"
 echo "  Bind:        ${BIND}"
