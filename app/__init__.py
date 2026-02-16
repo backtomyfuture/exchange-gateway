@@ -49,18 +49,9 @@ def create_app() -> FastAPI:
     register_exceptions(app)
     register_routers(app, prefix="/api")
 
-    @app.middleware("http")
-    async def log_requests(request, call_next):
-        import time
-        start_time = time.time()
-        response = await call_next(request)
-        process_time = (time.time() - start_time) * 1000
-        print(f"DEBUG_REQUEST: {request.method} {request.url.path} - {response.status_code} ({process_time:.2f}ms)")
-        return response
-
     @app.get("/", tags=["Root"])
     async def root():
-        }
+        return {"status": "ok", "message": "Exchange Gateway is running"}
 
     return app
 
