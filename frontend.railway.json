@@ -1,0 +1,14 @@
+{
+    "$schema": "https://railway.app/railway.schema.json",
+    "build": {
+        "builder": "DOCKERFILE",
+        "dockerfilePath": "deploy/nginx/Dockerfile",
+        "context": "."
+    },
+    "deploy": {
+        "numReplicas": 1,
+        "sleep": false,
+        "restartPolicyType": "ON_FAILURE",
+        "restartPolicyMaxRetries": 10
+    }
+}
