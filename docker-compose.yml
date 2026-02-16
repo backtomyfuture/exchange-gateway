@@ -94,7 +94,7 @@ services:
     image: exchange-app:latest
     container_name: exchange-gateway-webhook-worker
     restart: unless-stopped
-    entrypoint: ["/entrypoint-worker.sh"]
+    entrypoint: ["/opt/app/entrypoint-worker.sh"]
     environment:
       - ENV=${ENV:-dev}
       - DEBUG=${DEBUG:-true}

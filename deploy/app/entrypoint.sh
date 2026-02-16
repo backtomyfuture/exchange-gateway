@@ -57,21 +57,24 @@ if [ -z "$EXCHANGE_ENCRYPTION_KEY" ]; then
     echo "  Generated EXCHANGE_ENCRYPTION_KEY: ${EXCHANGE_ENCRYPTION_KEY:0:16}..."
 fi
 
-# 验证 Exchange 配置
-if [ -z "$EXCHANGE_SERVER" ] || [ -z "$EXCHANGE_DOMAIN" ] || [ -z "$EXCHANGE_EMAIL_SUFFIX" ]; then
-    echo "ERROR: Exchange configuration is incomplete!"
-    [ -z "$EXCHANGE_SERVER" ] && echo "  - EXCHANGE_SERVER is required"
-    [ -z "$EXCHANGE_DOMAIN" ] && echo "  - EXCHANGE_DOMAIN is required"
-    [ -z "$EXCHANGE_EMAIL_SUFFIX" ] && echo "  - EXCHANGE_EMAIL_SUFFIX is required"
-    echo ""
-    echo "Please configure these environment variables in your .env file:"
-    echo "  EXCHANGE_SERVER=your-exchange-server"
-    echo "  EXCHANGE_DOMAIN=your-domain"
-    echo "  EXCHANGE_EMAIL_SUFFIX=@your-domain.com"
-    exit 1
+# 验证 Exchange 配置（DEV_MODE 时跳过）
+if [ "${DEV_MODE:-false}" != "true" ] && [ "${DEV_MODE:-false}" != "1" ] && [ "${DEV_MODE:-false}" != "yes" ]; then
+    if [ -z "$EXCHANGE_SERVER" ] || [ -z "$EXCHANGE_DOMAIN" ] || [ -z "$EXCHANGE_EMAIL_SUFFIX" ]; then
+        echo "ERROR: Exchange configuration is incomplete!"
+        [ -z "$EXCHANGE_SERVER" ] && echo "  - EXCHANGE_SERVER is required"
+        [ -z "$EXCHANGE_DOMAIN" ] && echo "  - EXCHANGE_DOMAIN is required"
+        [ -z "$EXCHANGE_EMAIL_SUFFIX" ] && echo "  - EXCHANGE_EMAIL_SUFFIX is required"
+        echo ""
+        echo "Please configure these environment variables in your .env file:"
+        echo "  EXCHANGE_SERVER=your-exchange-server"
+        echo "  EXCHANGE_DOMAIN=your-domain"
+        echo "  EXCHANGE_EMAIL_SUFFIX=@your-domain.com"
+        exit 1
+    fi
+    echo "Exchange configuration validated: ${EXCHANGE_SERVER}"
+else
+    echo "WARNING: DEV_MODE enabled, Exchange configuration validation skipped"
 fi
-
-echo "Exchange configuration validated: ${EXCHANGE_SERVER}"
 
 # 使用 exec 替换当前进程，确保信号能正确传递到 gunicorn
 exec gunicorn "${APP_MODULE}" \
