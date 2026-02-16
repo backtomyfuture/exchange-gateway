@@ -7,9 +7,12 @@ set -e
 # =============================================================================
 
 # 配置
+# 配置
 APP_MODULE="${APP_MODULE:-app:app}"
 WORKERS="${WORKERS:-1}"
-BIND="${BIND:-0.0.0.0:8000}"
+# Railway 注入 PORT 环境变量，如果没有则回退到 8000
+BIND="0.0.0.0:${PORT:-8000}"
+WORK_PORT="${PORT:-8000}"
 WORKER_CLASS="${WORKER_CLASS:-uvicorn.workers.UvicornWorker}"
 TIMEOUT="${TIMEOUT:-120}"
 GRACEFUL_TIMEOUT="${GRACEFUL_TIMEOUT:-30}"
@@ -28,7 +31,19 @@ echo "  DATABASE_URL: ${DATABASE_URL:-(not set)}"
 echo "  DB_HOST:     ${DB_HOST:-(not set)}"
 echo "=========================================="
 
-# 等待数据库就绪（如果配置了 DB_HOST）
+# 等待数据库就绪
+# 如果没有 DB_HOST 但有 DATABASE_URL 或 MYSQL_URL，尝试解析它们
+if [ -z "$DB_HOST" ]; then
+    URL="${MYSQL_URL:-$DATABASE_URL}"
+    if [ -n "$URL" ]; then
+        echo "Parsing database connection from URL..."
+        # 提取 host 和 port (格式: mysql://user:pass@host:port/db)
+        DB_HOST=$(echo "$URL" | sed -e 's|.*@||' -e 's|/.*||' -e 's|:.*||')
+        DB_PORT=$(echo "$URL" | grep -o ':[0-9]\+' | tail -n1 | cut -d: -f2)
+        DB_PORT="${DB_PORT:-3306}"
+    fi
+fi
+
 if [ -n "$DB_HOST" ]; then
     echo "Waiting for database at ${DB_HOST}:${DB_PORT:-3306}..."
     

@@ -91,9 +91,10 @@ RUN mkdir -p /var/log/app && \
 
 USER appuser
 
-# 健康检查
+# 健康检查 (使用硬编码的 8000 或由 entrypoint.sh 处理的运行时绑定)
+# 注意：Railway 的健康检查通过 railway.json 配置，这里的 HEALTHCHECK 主要是为了 Docker 本地运行
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:8000/health || curl -f http://localhost:${PORT:-8000}/health || exit 1
 
 EXPOSE 8000
 
