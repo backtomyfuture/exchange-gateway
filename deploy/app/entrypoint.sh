@@ -104,9 +104,10 @@ if [ "${AUTO_MIGRATE:-true}" = "true" ] || [ "${AUTO_MIGRATE:-true}" = "1" ]; th
 fi
 
 # 启动应用 (直接使用 uvicorn 排除 gunicorn 问题)
-echo "Starting Uvicorn directly on ${BIND}..."
+echo "Runtime PORT: ${PORT}"
+echo "Starting Uvicorn directly on port ${PORT:-8000}..."
 exec uvicorn "${APP_MODULE}" \
-    --host "::" \
-    --port 8000 \
+    --host "0.0.0.0" \
+    --port "${PORT:-8000}" \
     --log-level debug \
     --access-log
