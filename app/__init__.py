@@ -51,10 +51,8 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
-        import logging
-        logger = logging.getLogger("app.debug")
-        logger.info(f"Incoming request: {request.method} {request.url}")
-        logger.info(f"Headers: {dict(request.headers)}")
+        print(f"DEBUG_REQUEST: {request.method} {request.url}")
+        print(f"DEBUG_HEADERS: {dict(request.headers)}")
         response = await call_next(request)
         return response
 
