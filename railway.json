@@ -5,6 +5,7 @@
         "dockerfilePath": "deploy/app/Dockerfile"
     },
     "deploy": {
+        "port": 8000,
         "healthcheckPath": "/health",
         "healthcheckTimeout": 300,
         "restartPolicyType": "ON_FAILURE",
