@@ -248,7 +248,8 @@ class TestCircuitBreaker:
         """测试断路器半开状态恢复"""
         from app.services.exchange.webhook_listener import CircuitBreaker
 
-        cb = CircuitBreaker(failure_threshold=2, recovery_timeout=0)
+        # 设置 half_open_max_calls=1，这样一次成功就能关闭
+        cb = CircuitBreaker(failure_threshold=2, recovery_timeout=0, half_open_max_calls=1)
 
         async def fail_func():
             raise Exception("Test error")
