@@ -43,6 +43,35 @@ if [ -n "$DB_HOST" ]; then
     echo "Database is ready!"
 fi
 
+# 生成缺失的安全密钥
+if [ -z "$SECRET_KEY" ]; then
+    echo "WARNING: SECRET_KEY not set, generating one..."
+    export SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+    echo "  Generated SECRET_KEY: ${SECRET_KEY:0:16}..."
+fi
+
+if [ -z "$EXCHANGE_ENCRYPTION_KEY" ]; then
+    echo "WARNING: EXCHANGE_ENCRYPTION_KEY not set, generating one..."
+    export EXCHANGE_ENCRYPTION_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+    echo "  Generated EXCHANGE_ENCRYPTION_KEY: ${EXCHANGE_ENCRYPTION_KEY:0:16}..."
+fi
+
+# 验证 Exchange 配置
+if [ -z "$EXCHANGE_SERVER" ] || [ -z "$EXCHANGE_DOMAIN" ] || [ -z "$EXCHANGE_EMAIL_SUFFIX" ]; then
+    echo "ERROR: Exchange configuration is incomplete!"
+    [ -z "$EXCHANGE_SERVER" ] && echo "  - EXCHANGE_SERVER is required"
+    [ -z "$EXCHANGE_DOMAIN" ] && echo "  - EXCHANGE_DOMAIN is required"
+    [ -z "$EXCHANGE_EMAIL_SUFFIX" ] && echo "  - EXCHANGE_EMAIL_SUFFIX is required"
+    echo ""
+    echo "Please configure these environment variables in your .env file:"
+    echo "  EXCHANGE_SERVER=your-exchange-server"
+    echo "  EXCHANGE_DOMAIN=your-domain"
+    echo "  EXCHANGE_EMAIL_SUFFIX=@your-domain.com"
+    exit 1
+fi
+
+echo "Exchange configuration validated: ${EXCHANGE_SERVER}"
+
 # 使用 exec 替换当前进程，确保信号能正确传递到 gunicorn
 exec gunicorn "${APP_MODULE}" \
     --workers "${WORKERS}" \

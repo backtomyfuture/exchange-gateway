@@ -29,6 +29,12 @@ services:
       - ./.docker-data/mysql:/var/lib/mysql
     networks:
       - backend
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
   # ===========================================
   # FastAPI Application
@@ -48,18 +54,19 @@ services:
       - DB_USER=${DB_USER:-root}
       - DB_PASSWORD=${DB_PASSWORD:-root123}
       - DB_NAME=${DB_NAME:-vue_fastapi_admin}
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+      - SECRET_KEY=${SECRET_KEY}
       - WORKERS=${WORKERS:-2}
-      # Exchange mail service configuration
-      - EXCHANGE_SERVER=${EXCHANGE_SERVER:-10.72.8.110}
-      - EXCHANGE_DOMAIN=${EXCHANGE_DOMAIN:-hnanet}
-      - EXCHANGE_EMAIL_SUFFIX=${EXCHANGE_EMAIL_SUFFIX:-@tianjin-air.com}
-      - EXCHANGE_ENCRYPTION_KEY=${EXCHANGE_ENCRYPTION_KEY:-dev-encryption-key-change-in-production}
+      # Exchange mail service configuration (no defaults - must be configured)
+      - EXCHANGE_SERVER=${EXCHANGE_SERVER}
+      - EXCHANGE_DOMAIN=${EXCHANGE_DOMAIN}
+      - EXCHANGE_EMAIL_SUFFIX=${EXCHANGE_EMAIL_SUFFIX}
+      - EXCHANGE_ENCRYPTION_KEY=${EXCHANGE_ENCRYPTION_KEY}
       - WEBHOOK_ALLOW_PRIVATE_URLS=true
     ports:
       - "18001:8000"
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
     volumes:
       - ./app:/opt/app/app:ro
       - ./.docker-data/logs:/var/log/app
@@ -86,12 +93,14 @@ services:
       - DB_USER=${DB_USER:-root}
       - DB_PASSWORD=${DB_PASSWORD:-root123}
       - DB_NAME=${DB_NAME:-vue_fastapi_admin}
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
-      - EXCHANGE_ENCRYPTION_KEY=${EXCHANGE_ENCRYPTION_KEY:-dev-encryption-key-change-in-production}
+      - SECRET_KEY=${SECRET_KEY}
+      - EXCHANGE_ENCRYPTION_KEY=${EXCHANGE_ENCRYPTION_KEY}
       - WEBHOOK_ALLOW_PRIVATE_URLS=true
     depends_on:
-      - mysql
-      - app
+      mysql:
+        condition: service_healthy
+      app:
+        condition: service_started
     volumes:
       - ./app:/opt/app/app:ro
       - ./migrations:/opt/app/migrations
@@ -115,7 +124,8 @@ services:
     ports:
       - "${NGINX_PORT:-80}:80"
     depends_on:
-      - app
+      app:
+        condition: service_started
     networks:
       - frontend
 

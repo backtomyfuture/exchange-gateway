@@ -1,10 +1,9 @@
-import shutil
-
 from aerich import Command
 from fastapi import FastAPI
 from fastapi.middleware import Middleware
 from fastapi.middleware.cors import CORSMiddleware
 from tortoise.expressions import Q
+from tortoise import Tortoise
 
 from app.api import api_router
 from app.api.v1.health import router as health_router
@@ -281,29 +280,28 @@ async def init_apis():
     await api_controller.refresh_api()
 
 
-from tortoise import Tortoise
-
-
 async def init_db():
+    from aerich import Command
+    from tortoise import Tortoise
+
     await Tortoise.init(config=settings.TORTOISE_ORM)
-    await Tortoise.generate_schemas()
-    logger.info("Tortoise-ORM initialized successfully with schemas generated.")
 
-    # command = Command(tortoise_config=settings.TORTOISE_ORM)
-    # try:
-    #     await command.init_db(safe=True)
-    # except FileExistsError:
-    #     pass
+    # 使用 aerich 进行数据库迁移
+    command = Command(tortoise_config=settings.TORTOISE_ORM)
+    try:
+        # 尝试初始化数据库（safe=True 只创建不存在的表）
+        await command.init_db(safe=True)
+    except FileExistsError:
+        # 表已存在，跳过初始化
+        pass
 
-    # await command.init()
-    # try:
-    #     await command.migrate()
-    # except AttributeError:
-    #     logger.warning("unable to retrieve model history from database, model history will be created from scratch")
-    #     shutil.rmtree("migrations")
-    #     await command.init_db(safe=True)
+    # 运行待执行的迁移
+    try:
+        await command.upgrade(run_in_transaction=True)
+    except Exception as e:
+        logger.warning(f"Migration warning: {e}")
 
-    # await command.upgrade(run_in_transaction=True)
+    logger.info("Database initialized with aerich migrations.")
 
 
 async def init_roles():
