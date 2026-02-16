@@ -1,5 +1,6 @@
 import os
 import typing
+from urllib.parse import urlparse
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
@@ -45,6 +46,28 @@ def get_secret(secret_name: str, default: str = "") -> str:
     return os.getenv(secret_name, default)
 
 
+def parse_database_url(database_url: str) -> dict:
+    """
+    解析 DATABASE_URL 环境变量（Railway MySQL 插件格式）。
+    
+    格式: mysql://user:password@host:port/database
+    
+    Args:
+        database_url: 数据库连接 URL
+    
+    Returns:
+        包含 host, port, user, password, database 的字典
+    """
+    parsed = urlparse(database_url)
+    return {
+        "host": parsed.hostname or "localhost",
+        "port": parsed.port or 3306,
+        "user": parsed.username or "root",
+        "password": parsed.password or "",
+        "database": parsed.path.lstrip("/") if parsed.path else "exchange_gateway",
+    }
+
+
 class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     APP_TITLE: str = "Exchange Gateway"
@@ -75,12 +98,16 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 day
 
-    # Database configuration: DEV_MODE 时使用默认开发配置
-    DB_HOST: str = os.getenv("DB_HOST", "localhost")
-    DB_PORT: int = int(os.getenv("DB_PORT", "3306"))
-    DB_USER: str = os.getenv("DB_USER", "admin")
-    DB_PASSWORD: str = os.getenv("DB_PASSWORD", _DEV_DB_PASSWORD if DEV_MODE else "")
-    DB_NAME: str = os.getenv("DB_NAME", "exchange_gateway")
+    # Database configuration: 优先使用 DATABASE_URL (Railway 插件格式)
+    # 如果未设置，则使用独立环境变量或默认值
+    _database_url = os.getenv("DATABASE_URL", "")
+    _db_config = parse_database_url(_database_url) if _database_url else {}
+    
+    DB_HOST: str = os.getenv("DB_HOST", _db_config.get("host", "localhost"))
+    DB_PORT: int = int(os.getenv("DB_PORT", str(_db_config.get("port", 3306))))
+    DB_USER: str = os.getenv("DB_USER", _db_config.get("user", "admin"))
+    DB_PASSWORD: str = os.getenv("DB_PASSWORD", _db_config.get("password", _DEV_DB_PASSWORD if DEV_MODE else ""))
+    DB_NAME: str = os.getenv("DB_NAME", _db_config.get("database", "exchange_gateway"))
 
     # 数据库连接池配置
     DB_POOL_MIN_SIZE: int = int(os.getenv("DB_POOL_MIN_SIZE", "5"))
