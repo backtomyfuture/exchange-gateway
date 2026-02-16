@@ -68,6 +68,12 @@ def parse_database_url(database_url: str) -> dict:
     }
 
 
+# 在类外解析 DATABASE_URL/MYSQL_URL，以便在类属性中使用
+# Railway MySQL 插件使用 MYSQL_URL
+_database_url = os.getenv("MYSQL_URL") or os.getenv("DATABASE_URL", "")
+_db_config = parse_database_url(_database_url) if _database_url else {}
+
+
 class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     APP_TITLE: str = "Exchange Gateway"
@@ -98,11 +104,8 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 day
 
-    # Database configuration: 优先使用 DATABASE_URL (Railway 插件格式)
+    # Database configuration: 优先使用 MYSQL_URL/DATABASE_URL (Railway 插件格式)
     # 如果未设置，则使用独立环境变量或默认值
-    _database_url = os.getenv("DATABASE_URL", "")
-    _db_config = parse_database_url(_database_url) if _database_url else {}
-    
     DB_HOST: str = os.getenv("DB_HOST", _db_config.get("host", "localhost"))
     DB_PORT: int = int(os.getenv("DB_PORT", str(_db_config.get("port", 3306))))
     DB_USER: str = os.getenv("DB_USER", _db_config.get("user", "admin"))
