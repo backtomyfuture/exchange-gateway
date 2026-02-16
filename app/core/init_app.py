@@ -311,12 +311,10 @@ async def init_apis():
 
 async def init_db():
     """
-    初始化数据库表和迁移
-    注意：迁移失败不会阻止应用启动，只记录警告日志
-    如需独立执行迁移，请使用: python -m app.utils.db_migrate
+    初始化数据库表
+    使用 Tortoise.generate_schemas() 直接从模型创建表，更可靠
     """
     import os
-    from aerich import Command
     from tortoise import Tortoise
 
     # 检查是否启用启动时迁移
@@ -328,25 +326,13 @@ async def init_db():
 
     await Tortoise.init(config=settings.TORTOISE_ORM)
 
-    # 使用 aerich 进行数据库迁移
-    command = Command(tortoise_config=settings.TORTOISE_ORM)
+    # 使用 Tortoise.generate_schemas() 直接从模型创建表
     try:
-        # 尝试初始化数据库（safe=True 只创建不存在的表）
-        await command.init_db(safe=True)
-    except FileExistsError:
-        # 表已存在，跳过初始化
-        pass
+        await Tortoise.generate_schemas()
+        logger.info("Database schema generated successfully")
     except Exception as e:
-        logger.warning(f"Database init_db warning: {e}")
-
-    # 运行待执行的迁移
-    try:
-        await command.upgrade(run_in_transaction=True)
-    except Exception as e:
-        # 迁移失败不阻止应用启动，仅记录警告
-        logger.warning(f"Migration warning: {e}")
-
-    logger.info("Database initialized with aerich migrations.")
+        # 表可能已存在，尝试继续
+        logger.warning(f"Schema generation warning: {e}")
 
 
 async def init_roles():

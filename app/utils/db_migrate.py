@@ -59,7 +59,12 @@ def get_tortoise_config():
         },
         "apps": {
             "models": {
-                "models": ["app.models", "aerich.models"],
+                "models": [
+                    "app.models.admin",
+                    "app.models.exchange",
+                    "app.models.webhook",
+                    "aerich.models",
+                ],
                 "default_connection": "mysql",
             },
         },
@@ -83,34 +88,28 @@ async def run_migration():
     print(f"DB Name: {tortoise_config['connections']['mysql']['credentials']['database']}")
     print()
 
-    # 使用 aerich 进行迁移
-    from aerich import Command
+    # 初始化 Tortoise ORM
+    from tortoise import Tortoise
 
-    command = Command(tortoise_config=tortoise_config)
-    await command.init()
+    print("Initializing Tortoise ORM...")
+    await Tortoise.init(config=tortoise_config)
+    print("  - Tortoise ORM initialized")
 
-    # 1. 初始化数据库表（safe=True 只创建不存在的表）
-    print("Initializing database tables (safe mode)...")
+    # 生成架构（创建所有表）
+    print("Generating database schema...")
     try:
-        await command.init_db(safe=True)
-        print("  - Database tables initialized")
-    except FileExistsError:
-        print("  - Tables already exist, skipping")
+        await Tortoise.generate_schemas()
+        print("  - Schema generated successfully")
     except Exception as e:
-        print(f"  - Warning: {e}")
-
-    # 2. 执行待定迁移
-    print("Running pending migrations...")
-    try:
-        await command.upgrade(run_in_transaction=True)
-        print("  - Migrations completed")
-    except Exception as e:
-        print(f"  - Migration result: {e}")
+        print(f"  - Schema generation warning: {e}")
 
     print()
     print("=" * 50)
     print("Database migration completed!")
     print("=" * 50)
+
+    # 关闭连接
+    await Tortoise.close_connections()
 
 
 if __name__ == "__main__":
