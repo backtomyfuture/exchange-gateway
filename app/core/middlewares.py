@@ -194,7 +194,11 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
 
             data["request_args"] = request.state.request_args
             data["response_body"] = await self.get_response_body(request, response)
-            await AuditLog.create(**data)
+            try:
+                await AuditLog.create(**data)
+            except Exception as e:
+                # 即使审计日志写入失败，也不应该影响正常业务流程
+                print(f"FAILED_TO_LOG: {str(e)}")
 
         return response
 
