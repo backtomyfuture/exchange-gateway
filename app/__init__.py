@@ -48,6 +48,17 @@ def create_app() -> FastAPI:
     )
     register_exceptions(app)
     register_routers(app, prefix="/api")
+
+    @app.get("/", tags=["Root"])
+    async def root():
+        return {
+            "message": f"Welcome to {settings.APP_TITLE}",
+            "status": "running",
+            "version": settings.VERSION,
+            "docs": "/docs",
+            "health": "/health"
+        }
+
     return app
 
 
