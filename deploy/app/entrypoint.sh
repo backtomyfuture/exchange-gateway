@@ -22,6 +22,11 @@ echo "  Workers:     ${WORKERS}"
 echo "  Bind:        ${BIND}"
 echo "  Timeout:     ${TIMEOUT}s"
 echo "=========================================="
+echo "Database Configuration Debug:"
+echo "  MYSQL_URL:   ${MYSQL_URL:-(not set)}"
+echo "  DATABASE_URL: ${DATABASE_URL:-(not set)}"
+echo "  DB_HOST:     ${DB_HOST:-(not set)}"
+echo "=========================================="
 
 # 等待数据库就绪（如果配置了 DB_HOST）
 if [ -n "$DB_HOST" ]; then
