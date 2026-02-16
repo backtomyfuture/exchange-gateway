@@ -13,7 +13,7 @@ def extract_token(token: str) -> str:
     """
     从 token 字符串中提取实际的 JWT token
     支持以下格式：
-    - 直接的 token 字符串   
+    - 直接的 token 字符串
     - Bearer token 格式（如：Bearer xxx）
     """
     if token.lower().startswith("bearer "):
@@ -51,12 +51,12 @@ class AuthControl:
         # 如果已经通过 API Key 认证，则跳过 JWT 认证 (Prevent double check if somehow set elsewhere)
         if getattr(request.state, "is_api_key_auth", False):
             return None
-            
+
         # 支持两种 token 传递方式：token header 或 Authorization Bearer
         actual_token = token or authorization
         if not actual_token:
             raise HTTPException(status_code=401, detail="未提供认证 Token")
-        
+
         # 提取实际的 token（去除 Bearer 前缀）
         actual_token = extract_token(actual_token)
         try:
@@ -65,6 +65,7 @@ class AuthControl:
                 if not settings.DEBUG:
                     raise HTTPException(status_code=401, detail="Dev token is disabled in production")
                 from app.log import logger
+
                 logger.warning("⚠️ 使用 dev token 登录，仅限开发环境使用！")
                 user = await User.filter().first()
                 if not user:
@@ -94,7 +95,7 @@ class PermissionControl:
         # 如果已经通过 API Key 认证，则跳过系统权限检查
         if getattr(request.state, "is_api_key_auth", False):
             return
-            
+
         if current_user.is_superuser:
             return
         method = request.method
@@ -110,12 +111,8 @@ class PermissionControl:
         # path = "/api/v1/auth/userinfo"
         # method = "GET"
         if (method, path) not in permission_apis:
-            print(f"DEBUG: Permission denied. Request: {method} {path}", flush=True)
-            print(f"DEBUG: User roles: {[r.name for r in roles]}", flush=True)
-            print(f"DEBUG: Allowed APIs (sample): {permission_apis[:5]}...", flush=True)
-            # Check if this path exists in DB at all to see if it's a mismatch
-            match_candidates = [api for api in permission_apis if api[0] == method and (api[1] in path or path in api[1])]
-            print(f"DEBUG: Similar paths in allowed list: {match_candidates}", flush=True)
+            # 使用结构化日志替代 print，避免泄露敏感信息
+            logger.warning(f"Permission denied: method={method}, path={path}, roles={[r.name for r in roles]}")
             raise HTTPException(status_code=403, detail=f"Permission denied method:{method} path:{path}")
 
 

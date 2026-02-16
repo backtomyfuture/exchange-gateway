@@ -8,6 +8,7 @@ _WEBHOOK_EVENT_ALIASES = {
     "deletedevent": "DeletedEvent",
     "modifiedevent": "ModifiedEvent",
     "movedevent": "MovedEvent",
+    "newmail": "NewMailEvent",
     "newmailevent": "NewMailEvent",
     "freebusychanged": "FreeBusyChangedEvent",
     "freebusychangedevent": "FreeBusyChangedEvent",
@@ -54,19 +55,19 @@ class WebhookBase(BaseModel):
         url_str = str(v)
         parsed = urlparse(url_str)
         hostname = parsed.hostname
-        
+
         if not hostname:
             raise ValueError("无效的 URL")
-            
+
         # Check for localhost
         if hostname.lower() in ["localhost", "127.0.0.1", "::1"]:
             raise ValueError("禁止使用本地地址")
-            
+
         try:
             # Resolve hostname to IP
             ip = socket.gethostbyname(hostname)
             ip_addr = ipaddress.ip_address(ip)
-            
+
             # 链路本地和回环地址在任何环境都禁止，避免自调用或访问本地敏感资源
             if ip_addr.is_loopback or ip_addr.is_link_local:
                 raise ValueError(f"禁止使用本地链路地址: {hostname} ({ip})")
@@ -74,7 +75,7 @@ class WebhookBase(BaseModel):
             # 私网地址允许由配置开关控制（开发可放开，生产默认关闭）
             if ip_addr.is_private and not settings.WEBHOOK_ALLOW_PRIVATE_URLS:
                 raise ValueError(f"禁止使用内部网络地址: {hostname} ({ip})")
-                 
+
         except socket.gaierror:
             # If we can't resolve it, we might still allow it if it's a valid public domain?
             # Or fail safe?
@@ -82,7 +83,7 @@ class WebhookBase(BaseModel):
             # But DNS might be flaky.
             # Let's assume if it fails DNS, it won't work anyway.
             pass
-            
+
         return v
 
     @field_validator("events")
@@ -118,9 +119,9 @@ class WebhookResponse(WebhookBase):
     created_by: int
     created_at: str
     updated_at: str
-    
+
     # 隐藏敏感信息
     # secret 不返回
-    
+
     class Config:
         from_attributes = True

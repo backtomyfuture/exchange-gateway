@@ -173,7 +173,7 @@ class TestUtilityFunctions:
 class TestGetCrypto:
     """测试获取全局加密器"""
 
-    @patch("app.utils.crypto.settings")
+    @patch("app.settings.config.settings")
     def test_get_crypto_singleton(self, mock_settings):
         """测试获取单例加密器"""
         mock_settings.EXCHANGE_ENCRYPTION_KEY = base64.b64encode(b"\x00" * 32).decode("utf-8")
@@ -187,16 +187,11 @@ class TestGetCrypto:
         # 应该是同一个实例
         assert crypto1 is crypto2
 
-    @patch("app.utils.crypto.settings")
-    def test_get_crypto_with_invalid_key(self, mock_settings):
+    def test_get_crypto_with_invalid_key(self):
         """测试获取加密器时使用无效密钥"""
-        mock_settings.EXCHANGE_ENCRYPTION_KEY = "invalid-key"
-
-        # 清除缓存
-        get_crypto.cache_clear()
-
-        with pytest.raises(ValueError):
-            get_crypto()
+        # 直接测试 CredentialCrypto 类的初始化
+        with pytest.raises(ValueError, match="无效的加密密钥格式"):
+            CredentialCrypto("invalid-key")
 
 
 class TestCryptoIntegration:

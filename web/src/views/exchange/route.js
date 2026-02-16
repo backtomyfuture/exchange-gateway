@@ -30,6 +30,15 @@ export default {
             },
         },
         {
+            name: 'ExchangeWebhooks',
+            path: 'webhooks',
+            component: () => import('@/views/exchange/webhooks/index.vue'),
+            meta: {
+                title: 'Webhook订阅',
+                icon: 'connection',
+            },
+        },
+        {
             name: 'ExchangeTemplates',
             path: 'templates',
             component: () => import('@/views/exchange/templates/index.vue'),

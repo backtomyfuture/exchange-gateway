@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Exchange Email Server"
     APP_DESCRIPTION: str = "Exchange邮箱服务器，提供各种接口"
 
-    CORS_ORIGINS: typing.List = ["*"]
+    CORS_ORIGINS: typing.List = (os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(","),)
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_METHODS: typing.List = ["*"]
     CORS_ALLOW_HEADERS: typing.List = ["*"]
@@ -100,6 +100,9 @@ class Settings(BaseSettings):
     # Streaming 异常重连等待（秒），仅在异常时生效
     EXCHANGE_STREAM_ERROR_RETRY_SECONDS: int = int(os.getenv("EXCHANGE_STREAM_ERROR_RETRY_SECONDS", "5"))
 
+    # Redis 配置（用于分布式速率限制）
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
     TORTOISE_ORM: dict = {}
 
     @model_validator(mode="after")
@@ -132,6 +135,16 @@ class Settings(BaseSettings):
 
         if self.EXCHANGE_STREAM_ERROR_RETRY_SECONDS < 0:
             raise ValueError("EXCHANGE_STREAM_ERROR_RETRY_SECONDS 不能小于 0")
+
+        # 生产环境检查 CORS 配置
+        if not DEV_MODE and "*" in self.CORS_ORIGINS:
+            import warnings
+
+            warnings.warn(
+                "\n⚠️  CORS 配置为允许所有来源 (*)，生产环境建议指定具体域名！\n"
+                "设置环境变量 CORS_ORIGINS='https://domain1.com,https://domain2.com'\n",
+                UserWarning,
+            )
 
         # 使用 get_secret 函数获取密码，支持 Docker Secrets
         db_password = get_secret("DB_PASSWORD", self.DB_PASSWORD)

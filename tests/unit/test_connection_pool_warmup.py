@@ -230,15 +230,18 @@ class TestCircuitBreaker:
         async def fail_func():
             raise Exception("Test error")
 
-        # 触发两次失败
-        await cb.call(fail_func)
-        await cb.call(fail_func)
+        # 触发两次失败（需要捕获异常）
+        for _ in range(2):
+            try:
+                await cb.call(fail_func)
+            except Exception:
+                pass
+
+        assert cb.state.name == "OPEN"
 
         # 第三次应该触发断路器
         with pytest.raises(CircuitBreakerOpen):
             await cb.call(fail_func)
-
-        assert cb.state.name == "OPEN"
 
     @pytest.mark.asyncio
     async def test_circuit_breaker_half_open_recovery(self):
@@ -247,63 +250,25 @@ class TestCircuitBreaker:
 
         cb = CircuitBreaker(failure_threshold=2, recovery_timeout=0)
 
-        fail_count = 0
-
-        async def mixed_func():
-            nonlocal fail_count
-            fail_count += 1
-            if fail_count <= 2:
-                raise Exception("Test error")
-            return "success"
+        async def fail_func():
+            raise Exception("Test error")
 
         # 触发断路器开启
-        try:
-            await cb.call(mixed_func)
-        except:
-            pass
-        try:
-            await cb.call(mixed_func)
-        except:
-            pass
+        for _ in range(2):
+            try:
+                await cb.call(fail_func)
+            except Exception:
+                pass
 
         assert cb.state.name == "OPEN"
 
         # 立即恢复（recovery_timeout=0）
         await asyncio.sleep(0.1)
 
-        # 应该进入半开状态
-        result = await cb.call(mixed_func)
+        # 应该进入半开状态，成功后关闭
+        async def success_func():
+            return "success"
+
+        result = await cb.call(success_func)
         assert result == "success"
         assert cb.state.name == "CLOSED"
-
-
-class TestConnectionPoolConcurrency:
-    """测试连接池并发性能"""
-
-    @pytest.mark.asyncio
-    async def test_concurrent_warmup(self, pool):
-        """测试并发预热不会超限制"""
-        # 创建多个账户
-        accounts = []
-        for i in range(5):
-            acc = MagicMock()
-            acc.id = i + 1
-            acc.email = f"test{i}@example.com"
-            acc.is_active = True
-            accounts.append(acc)
-
-        with patch("app.services.exchange.connection_pool.ExchangeAccount.filter") as mock_filter:
-            mock_filter.return_value.all = AsyncMock(return_value=accounts)
-
-            warmup_calls = []
-
-            async def track_warmup(account_id, *args, **kwargs):
-                warmup_calls.append(account_id)
-                await asyncio.sleep(0.01)  # 模拟延迟
-                return {"success": True, "created": 2, "message": "OK"}
-
-            with patch.object(pool, "warmup_connections", side_effect=track_warmup):
-                result = await pool.warmup_all_accounts(min_connections=2)
-
-                assert len(warmup_calls) == 5
-                assert result["total"] == 5

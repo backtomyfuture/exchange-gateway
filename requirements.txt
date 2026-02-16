@@ -73,3 +73,10 @@ tomlkit==0.13.2
 
 # Retry logic
 tenacity==8.2.3
+
+# Redis for distributed rate limiting
+redis==5.2.1
+
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.24.0

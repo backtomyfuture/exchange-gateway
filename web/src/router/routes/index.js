@@ -25,7 +25,7 @@ export const basicRoutes = [
         },
       },
     ],
-    meta: { order: 1 },
+    meta: { order: 0 },
   },
 
   {

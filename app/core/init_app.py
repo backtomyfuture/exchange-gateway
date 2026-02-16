@@ -86,30 +86,67 @@ async def init_superuser():
 
 
 async def init_menus():
-    # 1. Exchange 邮件 (作为首选菜单)
+    # 1. 邮件服务 (作为首选菜单)
     # 尝试获取及其ID，以支持幂等性
-    exchange_menu = await Menu.get_or_none(name="Exchange邮件")
+    exchange_menu = await Menu.get_or_none(name="邮件服务")
     if not exchange_menu:
         exchange_menu = await Menu.create(
             menu_type=MenuType.CATALOG,
-            name="Exchange邮件",
+            name="邮件服务",
             path="/exchange",
-            order=0,  # 排在第一位
+            order=2,  # 邮件服务
             parent_id=0,
-            icon="token:brand-exchange",
+            icon="ph:envelope-simple-open-bold",
             is_hidden=False,
             component="Layout",
             keepalive=False,
             redirect="/exchange/accounts",
         )
-    
+
     # 检查并创建子菜单
     exchange_children = [
-        {"name": "账户管理", "path": "accounts", "component": "/exchange/accounts", "icon": "material-symbols:contact-mail-outline", "order": 1},
-        {"name": "API密钥", "path": "keys", "component": "/exchange/keys", "icon": "material-symbols:key-outline", "order": 2},
-        {"name": "邮件模板", "path": "templates", "component": "/exchange/templates", "icon": "material-symbols:article-outline", "order": 3},
-        {"name": "操作日志", "path": "logs", "component": "/exchange/logs", "icon": "material-symbols:history", "order": 4},
-        {"name": "使用统计", "path": "stats", "component": "/exchange/stats", "icon": "material-symbols:analytics-outline", "order": 5},
+        {
+            "name": "账户管理",
+            "path": "accounts",
+            "component": "/exchange/accounts",
+            "icon": "material-symbols:contact-mail-outline",
+            "order": 1,
+        },
+        {
+            "name": "API密钥",
+            "path": "keys",
+            "component": "/exchange/keys",
+            "icon": "material-symbols:key-outline",
+            "order": 2,
+        },
+        {
+            "name": "Webhook订阅",
+            "path": "webhooks",
+            "component": "/exchange/webhooks",
+            "icon": "mdi:webhook",
+            "order": 3,
+        },
+        {
+            "name": "邮件模板",
+            "path": "templates",
+            "component": "/exchange/templates",
+            "icon": "material-symbols:article-outline",
+            "order": 4,
+        },
+        {
+            "name": "操作日志",
+            "path": "logs",
+            "component": "/exchange/logs",
+            "icon": "material-symbols:history",
+            "order": 5,
+        },
+        {
+            "name": "使用统计",
+            "path": "stats",
+            "component": "/exchange/stats",
+            "icon": "material-symbols:analytics-outline",
+            "order": 6,
+        },
     ]
 
     for child in exchange_children:
@@ -132,7 +169,7 @@ async def init_menus():
             menu_type=MenuType.CATALOG,
             name="系统管理",
             path="/system",
-            order=99,
+            order=1,
             parent_id=0,
             icon="carbon:gui-management",
             is_hidden=False,
@@ -210,19 +247,48 @@ async def init_menus():
         ]
         await Menu.bulk_create(children_menu)
 
+    # 3. 开发者服务
+    if not await Menu.filter(name="开发者服务").exists():
+        dev_menu = await Menu.create(
+            menu_type=MenuType.CATALOG,
+            name="开发者服务",
+            path="/developer",
+            order=3,
+            parent_id=0,
+            icon="material-symbols:code",
+            is_hidden=False,
+            component="Layout",
+            keepalive=False,
+            redirect="/developer/index",
+        )
+        dev_children = [
+            Menu(
+                menu_type=MenuType.MENU,
+                name="开发者指南",
+                path="index",
+                order=1,
+                parent_id=dev_menu.id,
+                icon="material-symbols:help-outline",
+                is_hidden=False,
+                component="/developer",
+                keepalive=False,
+            ),
+        ]
+        await Menu.bulk_create(dev_children)
 
 
 async def init_apis():
     await api_controller.refresh_api()
 
 
-
 from tortoise import Tortoise
+
 
 async def init_db():
     await Tortoise.init(config=settings.TORTOISE_ORM)
-    logger.info("Tortoise-ORM initialized successfully (Aerich bypassed).")
-    
+    await Tortoise.generate_schemas()
+    logger.info("Tortoise-ORM initialized successfully with schemas generated.")
+
     # command = Command(tortoise_config=settings.TORTOISE_ORM)
     # try:
     #     await command.init_db(safe=True)
@@ -247,7 +313,7 @@ async def init_roles():
             name="管理员",
             desc="管理员角色",
         )
-    
+
     user_role = await Role.get_or_none(name="普通用户")
     if not user_role:
         user_role = await Role.create(
@@ -258,10 +324,10 @@ async def init_roles():
     # 始终确保管理员拥有所有API和菜单
     all_apis = await Api.all()
     await admin_role.apis.add(*all_apis)
-    
+
     all_menus = await Menu.all()
     await admin_role.menus.add(*all_menus)
-    
+
     # 始终确保普通用户拥有所有菜单（根据需求）和基础API
     await user_role.menus.add(*all_menus)
     basic_apis = await Api.filter(Q(method__in=["GET"]) | Q(tags="基础模块"))
