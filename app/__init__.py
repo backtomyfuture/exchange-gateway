@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from tortoise import Tortoise
 
 from app.core.exceptions import SettingNotFound
