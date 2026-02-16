@@ -2,6 +2,7 @@
 Exchange 连接池管理
 复用连接以提高性能，支持自动重连和健康检查
 """
+
 import asyncio
 import time
 from contextlib import asynccontextmanager
@@ -36,7 +37,7 @@ class ExchangeConnection:
     """
     Exchange 连接封装
     """
-    
+
     def __init__(self, account: Account, account_id: int):
         self.account = account
         self.account_id = account_id
@@ -44,25 +45,22 @@ class ExchangeConnection:
         self.last_used_at = time.time()
         self.in_use = False
         self._lock = asyncio.Lock()
-    
+
     def is_expired(self, max_age: int = 3600) -> bool:
         """检查连接是否过期（默认1小时）"""
         return time.time() - self.created_at > max_age
-    
+
     def touch(self):
         """更新最后使用时间"""
         self.last_used_at = time.time()
-    
+
     async def is_healthy(self) -> bool:
         """检查连接是否健康"""
         try:
             # 尝试获取收件箱信息来验证连接
             # 使用 run_in_executor 避免阻塞事件循环
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(
-                None, 
-                lambda: self.account.inbox.total_count
-            )
+            await loop.run_in_executor(None, lambda: self.account.inbox.total_count)
             return True
         except Exception as e:
             logger.warning(f"连接健康检查失败: {e}")
@@ -72,22 +70,31 @@ class ExchangeConnection:
 class ExchangeConnectionPool:
     """
     Exchange 连接池
-    管理多个账户的连接，支持连接复用和自动清理
+    管理多个账户的连接，支持连接复用、自动清理和连接预热
     """
-    
+
+    # 全局连接池最大容量（防止内存泄漏）
+    MAX_TOTAL_CONNECTIONS = 100
+    # 全局连接统计
+    _total_connections: int = 0
+
     def __init__(self, max_connections_per_account: int = 5, max_age: int = 3600):
         self._pools: dict[int, list[ExchangeConnection]] = {}
         self._max_per_account = max_connections_per_account
         self._max_age = max_age
         self._lock = asyncio.Lock()
         self._crypto = None
-    
+        # 预热状态追踪
+        self._warmup_status: dict[int, bool] = {}
+        # 预热任务
+        self._warmup_tasks: dict[int, asyncio.Task] = {}
+
     @property
     def crypto(self):
         if self._crypto is None:
             self._crypto = get_crypto()
         return self._crypto
-    
+
     async def _create_connection(self, db_account: ExchangeAccount) -> ExchangeConnection:
         """
         创建新的 Exchange 连接
@@ -95,21 +102,21 @@ class ExchangeConnectionPool:
         try:
             # 解密密码
             password = self.crypto.decrypt(db_account.encrypted_password)
-            
+
             # 获取配置
             server = db_account.server or settings.EXCHANGE_SERVER
             domain = db_account.domain or settings.EXCHANGE_DOMAIN
-            
+
             # 构建完整用户名
             full_username = f"{domain}\\{db_account.username}"
-            
+
             # 放到线程池中执行
             loop = asyncio.get_running_loop()
-            
+
             def create_account_ops():
                 # 创建凭据
                 credentials = Credentials(full_username, password)
-                
+
                 # 创建配置
                 config = Configuration(
                     server=server,
@@ -117,24 +124,21 @@ class ExchangeConnectionPool:
                     auth_type=NTLM,
                     retry_policy=FaultTolerance(max_wait=60),
                 )
-                
+
                 # 创建账户
                 return Account(
-                    primary_smtp_address=db_account.email,
-                    config=config,
-                    autodiscover=False,
-                    access_type=DELEGATE
+                    primary_smtp_address=db_account.email, config=config, autodiscover=False, access_type=DELEGATE
                 )
-            
+
             account = await loop.run_in_executor(None, create_account_ops)
-            
+
             logger.info(f"Exchange 连接创建成功: {db_account.email}")
             return ExchangeConnection(account, db_account.id)
-            
+
         except Exception as e:
             logger.error(f"创建 Exchange 连接失败: {db_account.email}, 错误: {e}")
             raise
-    
+
     async def get_connection(self, account_id: int) -> ExchangeConnection:
         """
         获取连接（优先复用现有连接）
@@ -147,44 +151,41 @@ class ExchangeConnectionPool:
                     # check if connection is in use
                     if conn.in_use:
                         continue
-                        
+
                     # is_healthy 现在是异步的
                     if not conn.is_expired(self._max_age) and await conn.is_healthy():
                         conn.touch()
                         conn.in_use = True
                         return conn
                 # 清理过期连接
-                self._pools[account_id] = [
-                    c for c in pool 
-                    if not c.is_expired(self._max_age)
-                ]
-            
+                self._pools[account_id] = [c for c in pool if not c.is_expired(self._max_age)]
+
             # 创建新连接
             db_account = await ExchangeAccount.filter(id=account_id).first()
             if not db_account:
                 raise ValueError(f"账户不存在: {account_id}")
             if not db_account.is_active:
                 raise ValueError(f"账户已禁用: {db_account.email}")
-            
+
             conn = await self._create_connection(db_account)
-            
+
             conn.in_use = True
-            
+
             # 添加到连接池
             if account_id not in self._pools:
                 self._pools[account_id] = []
             if len(self._pools[account_id]) < self._max_per_account:
                 self._pools[account_id].append(conn)
-            
+
             return conn
-    
+
     async def release_connection(self, conn: ExchangeConnection):
         """
         释放连接（标记为可用）
         """
         conn.touch()
         conn.in_use = False
-    
+
     async def close_account_connections(self, account_id: int):
         """
         关闭指定账户的所有连接
@@ -193,19 +194,155 @@ class ExchangeConnectionPool:
             if account_id in self._pools:
                 del self._pools[account_id]
                 logger.info(f"已关闭账户 {account_id} 的所有连接")
-    
+
     async def cleanup_expired(self):
         """
         清理所有过期连接
         """
         async with self._lock:
             for account_id in list(self._pools.keys()):
-                self._pools[account_id] = [
-                    c for c in self._pools[account_id]
-                    if not c.is_expired(self._max_age)
-                ]
+                old_len = len(self._pools[account_id])
+                self._pools[account_id] = [c for c in self._pools[account_id] if not c.is_expired(self._max_age)]
+                ExchangeConnectionPool._total_connections -= old_len - len(self._pools[account_id])
+
                 if not self._pools[account_id]:
                     del self._pools[account_id]
+
+    async def warmup_connections(self, account_id: int, min_connections: int = 2):
+        """
+        预热连接池：为指定账户预先创建连接
+
+        Args:
+            account_id: 账户ID
+            min_connections: 最小连接数（默认2个）
+
+        Returns:
+            dict: 预热结果 {"success": bool, "created": int, "message": str}
+        """
+        if self._warmup_status.get(account_id, False):
+            return {"success": True, "created": 0, "message": "连接已预热"}
+
+        try:
+            db_account = await ExchangeAccount.filter(id=account_id).first()
+            if not db_account:
+                return {"success": False, "created": 0, "message": f"账户不存在: {account_id}"}
+
+            if not db_account.is_active:
+                return {"success": False, "created": 0, "message": f"账户已禁用: {db_account.email}"}
+
+            created = 0
+            async with self._lock:
+                # 检查现有连接数
+                existing_count = len(self._pools.get(account_id, []))
+                needed = min(min_connections - existing_count, self._max_per_account - existing_count)
+
+                # 检查全局连接数限制
+                if ExchangeConnectionPool._total_connections >= self.MAX_TOTAL_CONNECTIONS:
+                    logger.warning(f"全局连接数已达上限，跳过预热: {account_id}")
+                    return {"success": False, "created": 0, "message": "连接池已满"}
+
+                # 创建新连接
+                for _ in range(max(0, needed)):
+                    if ExchangeConnectionPool._total_connections >= self.MAX_TOTAL_CONNECTIONS:
+                        break
+
+                    try:
+                        conn = await self._create_connection(db_account)
+                        conn.in_use = False  # 预热连接标记为未使用
+
+                        if account_id not in self._pools:
+                            self._pools[account_id] = []
+                        self._pools[account_id].append(conn)
+                        ExchangeConnectionPool._total_connections += 1
+                        created += 1
+                    except Exception as e:
+                        logger.error(f"预热连接创建失败: {e}")
+                        break
+
+            self._warmup_status[account_id] = True
+            logger.info(f"连接预热完成: account={account_id}, created={created}")
+            return {"success": True, "created": created, "message": f"成功创建 {created} 个预热连接"}
+
+        except Exception as e:
+            logger.error(f"连接预热失败: {account_id}, 错误: {e}")
+            return {"success": False, "created": 0, "message": str(e)}
+
+    async def warmup_all_accounts(self, min_connections: int = 2):
+        """
+        预热所有活跃账户的连接池
+
+        Args:
+            min_connections: 每个账户的最小连接数
+
+        Returns:
+            dict: 预热统计
+        """
+        accounts = await ExchangeAccount.filter(is_active=True).all()
+        results = {"total": len(accounts), "success": 0, "failed": 0, "total_created": 0, "details": []}
+
+        # 使用 gather 并发预热所有账户
+        tasks = [self.warmup_connections(acc.id, min_connections) for acc in accounts]
+
+        warmup_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for account, result in zip(accounts, warmup_results):
+            if isinstance(result, Exception):
+                results["failed"] += 1
+                results["details"].append(
+                    {"account_id": account.id, "email": account.email, "success": False, "message": str(result)}
+                )
+            elif isinstance(result, dict):
+                if result.get("success"):
+                    results["success"] += 1
+                    results["total_created"] += result.get("created", 0)
+                else:
+                    results["failed"] += 1
+                detail = {"account_id": account.id, "email": account.email}
+                detail.update(result)
+                results["details"].append(detail)
+
+        logger.info(f"全局连接预热完成: {results}")
+        return results
+
+    async def start_background_warmup(self, account_id: int, min_connections: int = 2):
+        """
+        启动后台预热任务
+
+        Args:
+            account_id: 账户ID
+            min_connections: 最小连接数
+        """
+        # 取消现有预热任务
+        if account_id in self._warmup_tasks:
+            old_task = self._warmup_tasks[account_id]
+            if not old_task.done():
+                old_task.cancel()
+                try:
+                    await old_task
+                except asyncio.CancelledError:
+                    pass
+
+        # 创建新的预热任务
+        async def warmup_task():
+            try:
+                await asyncio.sleep(1)  # 延迟1秒执行，避免启动时资源竞争
+                await self.warmup_connections(account_id, min_connections)
+            except asyncio.CancelledError:
+                logger.debug(f"预热任务取消: {account_id}")
+            except Exception as e:
+                logger.error(f"后台预热任务异常: {account_id}, {e}")
+
+        self._warmup_tasks[account_id] = asyncio.create_task(warmup_task())
+
+    def get_stats(self) -> dict:
+        """获取连接池统计信息"""
+        return {
+            "total_connections": ExchangeConnectionPool._total_connections,
+            "max_total": self.MAX_TOTAL_CONNECTIONS,
+            "accounts": {account_id: len(connections) for account_id, connections in self._pools.items()},
+            "max_per_account": self._max_per_account,
+            "warmup_status": self._warmup_status.copy(),
+        }
 
 
 # 全局连接池实例
@@ -224,7 +361,7 @@ def get_connection_pool() -> ExchangeConnectionPool:
 async def get_exchange_connection(account_id: int):
     """
     获取 Exchange 连接的上下文管理器
-    
+
     使用示例:
         async with get_exchange_connection(account_id) as conn:
             inbox = conn.account.inbox
