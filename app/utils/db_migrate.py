@@ -19,6 +19,19 @@
 import asyncio
 import os
 import sys
+from urllib.parse import urlparse
+
+
+def parse_database_url(database_url: str) -> dict:
+    """Parse DATABASE_URL/MYSQL_URL into connection parameters"""
+    parsed = urlparse(database_url)
+    return {
+        "host": parsed.hostname or "localhost",
+        "port": parsed.port or 3306,
+        "user": parsed.username or "root",
+        "password": parsed.password or "",
+        "database": parsed.path.lstrip("/") if parsed.path else "exchange_gateway",
+    }
 
 
 def get_tortoise_config():
@@ -26,12 +39,22 @@ def get_tortoise_config():
     构建独立的 Tortoise ORM 配置
     不依赖 app.settings，避免验证逻辑阻止启动
     """
-    # 检查必要的数据库环境变量
-    db_host = os.getenv("DB_HOST", "localhost")
-    db_port = int(os.getenv("DB_PORT", "3306"))
-    db_user = os.getenv("DB_USER", "root")
-    db_password = os.getenv("DB_PASSWORD", "")
-    db_name = os.getenv("DB_NAME", "vue_fastapi_admin")
+    # 优先解析 MYSQL_URL / DATABASE_URL
+    database_url = os.getenv("MYSQL_URL") or os.getenv("DATABASE_URL", "")
+    if database_url:
+        db_config = parse_database_url(database_url)
+        db_host = os.getenv("DB_HOST", db_config["host"])
+        db_port = int(os.getenv("DB_PORT", str(db_config["port"])))
+        db_user = os.getenv("DB_USER", db_config["user"])
+        db_password = os.getenv("DB_PASSWORD", db_config["password"])
+        db_name = os.getenv("DB_NAME", db_config["database"])
+    else:
+        # 回退到独立环境变量
+        db_host = os.getenv("DB_HOST", "localhost")
+        db_port = int(os.getenv("DB_PORT", "3306"))
+        db_user = os.getenv("DB_USER", "root")
+        db_password = os.getenv("DB_PASSWORD", "")
+        db_name = os.getenv("DB_NAME", "exchange_gateway")
 
     # DEV_MODE 时使用默认密码
     dev_mode = os.getenv("DEV_MODE", "false").lower() in ("true", "1", "yes")
