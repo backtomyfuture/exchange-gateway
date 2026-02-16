@@ -49,8 +49,8 @@ RUN chmod -R 755 /usr/share/nginx/html && \
 
 # 健康检查（统一使用 HTTP）
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget -q -O /dev/null http://127.0.0.1/nginx-health || exit 1
+    CMD wget -q -O /dev/null http://127.0.0.1:8080/nginx-health || exit 1
 
-EXPOSE 80
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]
