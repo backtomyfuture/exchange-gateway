@@ -10,8 +10,9 @@ set -e
 # 配置
 APP_MODULE="${APP_MODULE:-app:app}"
 WORKERS="${WORKERS:-1}"
-# 强制绑定到 8000 端口，与 Railway 域名设置一致
-BIND="0.0.0.0:8000"
+# 强制绑定到 [::]:8000 端口，支持 IPv4 和 IPv6，且与 Railway 域名设置一致
+BIND="[::]:8000"
+echo "DEBUG: BIND is set to ${BIND}"
 WORKER_CLASS="${WORKER_CLASS:-uvicorn.workers.UvicornWorker}"
 TIMEOUT="${TIMEOUT:-120}"
 GRACEFUL_TIMEOUT="${GRACEFUL_TIMEOUT:-30}"
