@@ -103,15 +103,10 @@ if [ "${AUTO_MIGRATE:-true}" = "true" ] || [ "${AUTO_MIGRATE:-true}" = "1" ]; th
     python -m app.utils.db_migrate || echo "Warning: Migration failed, will retry in app startup"
 fi
 
-# 使用 exec 替换当前进程，确保信号能正确传递到 gunicorn
-exec gunicorn "${APP_MODULE}" \
-    --workers "${WORKERS}" \
-    --worker-class "${WORKER_CLASS}" \
-    --bind "${BIND}" \
-    --timeout "${TIMEOUT}" \
-    --graceful-timeout "${GRACEFUL_TIMEOUT}" \
-    --keep-alive "${KEEP_ALIVE}" \
-    --access-logfile - \
-    --error-logfile - \
-    --capture-output \
-    --enable-stdio-inheritance
+# 启动应用 (直接使用 uvicorn 排除 gunicorn 问题)
+echo "Starting Uvicorn directly on ${BIND}..."
+exec uvicorn "${APP_MODULE}" \
+    --host "::" \
+    --port 8000 \
+    --log-level debug \
+    --access-log
