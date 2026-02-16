@@ -6,6 +6,7 @@
         "context": "."
     },
     "deploy": {
+        "port": 80,
         "numReplicas": 1,
         "sleep": false,
         "restartPolicyType": "ON_FAILURE",
