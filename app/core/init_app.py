@@ -71,8 +71,15 @@ def register_routers(app: FastAPI, prefix: str = "/api"):
 
 
 async def init_superuser():
-    user = await user_controller.model.exists()
-    if not user:
+    """
+    初始化超级用户
+    仅当管理员用户不存在时才创建，避免重复创建导致冲突
+    """
+    from app.models.admin import User
+
+    # 检查 admin 用户是否已存在
+    admin_exists = await User.get_or_none(username="admin")
+    if not admin_exists:
         await user_controller.create_user(
             UserCreate(
                 username="admin",
