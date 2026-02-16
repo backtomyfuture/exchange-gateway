@@ -159,8 +159,8 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
                 and route.path_regex.match(request.url.path)
                 and request.method in route.methods
             ):
-                data["module"] = ",".join(route.tags)
-                data["summary"] = route.summary
+                data["module"] = ",".join(route.tags) if route.tags else ""
+                data["summary"] = route.summary or route.path_format or ""
         # 获取用户信息
         try:
             token = request.headers.get("token")
