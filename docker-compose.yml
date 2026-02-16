@@ -77,7 +77,7 @@ services:
       - ./app:/opt/app/app:ro
       - ./.docker-data/logs:/var/log/app
       - ./pyproject.toml:/opt/app/pyproject.toml:ro
-      - ./migrations:/opt/app/migrations:ro
+      - ./migrations:/opt/app/migrations
       - ./tests:/opt/app/tests:ro
       - ./pytest.ini:/opt/app/pytest.ini:ro
     networks:

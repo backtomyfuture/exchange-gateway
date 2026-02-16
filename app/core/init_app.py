@@ -350,19 +350,27 @@ async def init_db():
 
 
 async def init_roles():
-    admin_role = await Role.get_or_none(name="管理员")
-    if not admin_role:
+    """
+    初始化角色
+    使用异常处理避免多 worker 竞态条件
+    """
+    # 创建管理员角色（处理重复）
+    try:
         admin_role = await Role.create(
             name="管理员",
             desc="管理员角色",
         )
+    except IntegrityError:
+        admin_role = await Role.get(name="管理员")
 
-    user_role = await Role.get_or_none(name="普通用户")
-    if not user_role:
+    # 创建普通用户角色（处理重复）
+    try:
         user_role = await Role.create(
             name="普通用户",
             desc="普通用户角色",
         )
+    except IntegrityError:
+        user_role = await Role.get(name="普通用户")
 
     # 始终确保管理员拥有所有API和菜单
     all_apis = await Api.all()
