@@ -9,7 +9,7 @@
 
 ## ⚡ Quick Deploy
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/exchange-gateway?referralCode=YOUR_CODE)
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/template/exchange-gateway?referralCode=f148002)
 
 ## Features
 
