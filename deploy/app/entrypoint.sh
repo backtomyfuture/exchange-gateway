@@ -10,9 +10,8 @@ set -e
 # 配置
 APP_MODULE="${APP_MODULE:-app:app}"
 WORKERS="${WORKERS:-1}"
-# Railway 注入 PORT 环境变量，如果没有则回退到 8000
-BIND="0.0.0.0:${PORT:-8000}"
-WORK_PORT="${PORT:-8000}"
+# 强制绑定到 8000 端口，与 Railway 域名设置一致
+BIND="0.0.0.0:8000"
 WORKER_CLASS="${WORKER_CLASS:-uvicorn.workers.UvicornWorker}"
 TIMEOUT="${TIMEOUT:-120}"
 GRACEFUL_TIMEOUT="${GRACEFUL_TIMEOUT:-30}"
