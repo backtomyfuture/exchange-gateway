@@ -281,8 +281,21 @@ async def init_apis():
 
 
 async def init_db():
+    """
+    初始化数据库表和迁移
+    注意：迁移失败不会阻止应用启动，只记录警告日志
+    如需独立执行迁移，请使用: python -m app.utils.db_migrate
+    """
+    import os
     from aerich import Command
     from tortoise import Tortoise
+
+    # 检查是否启用启动时迁移
+    auto_migrate = os.getenv("AUTO_MIGRATE", "true").lower() in ("true", "1", "yes")
+    if not auto_migrate:
+        logger.info("AUTO_MIGRATE=false, skipping startup migration")
+        await Tortoise.init(config=settings.TORTOISE_ORM)
+        return
 
     await Tortoise.init(config=settings.TORTOISE_ORM)
 
@@ -294,11 +307,14 @@ async def init_db():
     except FileExistsError:
         # 表已存在，跳过初始化
         pass
+    except Exception as e:
+        logger.warning(f"Database init_db warning: {e}")
 
     # 运行待执行的迁移
     try:
         await command.upgrade(run_in_transaction=True)
     except Exception as e:
+        # 迁移失败不阻止应用启动，仅记录警告
         logger.warning(f"Migration warning: {e}")
 
     logger.info("Database initialized with aerich migrations.")
