@@ -8,7 +8,7 @@ set -e
 
 # 配置
 APP_MODULE="${APP_MODULE:-app:app}"
-WORKERS="${WORKERS:-2}"
+WORKERS="${WORKERS:-1}"
 BIND="${BIND:-0.0.0.0:${PORT:-8000}}"
 WORKER_CLASS="${WORKER_CLASS:-uvicorn.workers.UvicornWorker}"
 TIMEOUT="${TIMEOUT:-120}"

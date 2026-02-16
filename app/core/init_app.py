@@ -359,16 +359,29 @@ async def init_roles():
         user_role = await Role.get(name="普通用户")
 
     # 始终确保管理员拥有所有API和菜单
-    all_apis = await Api.all()
-    await admin_role.apis.add(*all_apis)
+    try:
+        all_apis = await Api.all()
+        await admin_role.apis.add(*all_apis)
+    except Exception:
+        pass
 
-    all_menus = await Menu.all()
-    await admin_role.menus.add(*all_menus)
+    try:
+        all_menus = await Menu.all()
+        await admin_role.menus.add(*all_menus)
+    except Exception:
+        pass
 
     # 始终确保普通用户拥有所有菜单（根据需求）和基础API
-    await user_role.menus.add(*all_menus)
-    basic_apis = await Api.filter(Q(method__in=["GET"]) | Q(tags="基础模块"))
-    await user_role.apis.add(*basic_apis)
+    try:
+        await user_role.menus.add(*all_menus)
+    except Exception:
+        pass
+        
+    try:
+        basic_apis = await Api.filter(Q(method__in=["GET"]) | Q(tags="基础模块"))
+        await user_role.apis.add(*basic_apis)
+    except Exception:
+        pass
 
 
 async def init_data():
