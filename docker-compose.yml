@@ -5,7 +5,9 @@
 #   # Edit .env with your Exchange server configuration
 #   docker compose up -d
 #
-# For development: Set DEBUG=true in .env
+# ENV values: "dev" or "prod"
+# - dev: DEBUG=true, HTTP only
+# - prod: DEBUG=false, HTTPS enabled
 
 services:
   # ===========================================
@@ -47,8 +49,8 @@ services:
     container_name: exchange-gateway-app
     restart: unless-stopped
     environment:
-      - DEBUG=${DEBUG:-true}
-      - DEV_MODE=${DEBUG:-true}
+      - DEBUG=${ENV:-dev}
+      - DEV_MODE=${ENV:-dev}
       - DB_HOST=${DB_HOST:-mysql}
       - DB_PORT=${DB_PORT:-3306}
       - DB_USER=${DB_USER:-root}
@@ -87,7 +89,7 @@ services:
     restart: unless-stopped
     entrypoint: ["python3", "-m", "app.services.exchange.webhook_listener"]
     environment:
-      - DEBUG=${DEBUG:-true}
+      - DEBUG=${ENV:-dev}
       - DB_HOST=${DB_HOST:-mysql}
       - DB_PORT=${DB_PORT:-3306}
       - DB_USER=${DB_USER:-root}
@@ -116,11 +118,11 @@ services:
       context: .
       dockerfile: deploy/nginx/Dockerfile
       args:
-        NGINX_ENV: ${NGINX_ENV:-prod}
+        NGINX_ENV: ${ENV:-dev}
     container_name: exchange-gateway-nginx
     restart: unless-stopped
     environment:
-      - NGINX_ENV=${NGINX_ENV:-prod}
+      - NGINX_ENV=${ENV:-dev}
     ports:
       - "${NGINX_PORT:-80}:80"
     depends_on:
