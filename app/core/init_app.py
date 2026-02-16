@@ -93,22 +93,43 @@ async def init_superuser():
 
 
 async def init_menus():
+    """
+    初始化菜单
+    使用异常处理避免多 worker 竞态条件和重复数据问题
+    """
+    from tortoise.exceptions import MultipleObjectsReturned
+
     # 1. 邮件服务 (作为首选菜单)
     # 尝试获取及其ID，以支持幂等性
-    exchange_menu = await Menu.get_or_none(name="邮件服务")
+    try:
+        exchange_menu = await Menu.get(name="邮件服务")
+    except MultipleObjectsReturned:
+        # 存在重复数据，删除后重新获取第一个
+        duplicates = await Menu.filter(name="邮件服务").all()
+        for dup in duplicates[1:]:
+            await dup.delete()
+        exchange_menu = await Menu.get(name="邮件服务")
+    except Exception:
+        # 菜单不存在，创建新菜单
+        exchange_menu = None
+
     if not exchange_menu:
-        exchange_menu = await Menu.create(
-            menu_type=MenuType.CATALOG,
-            name="邮件服务",
-            path="/exchange",
-            order=2,  # 邮件服务
-            parent_id=0,
-            icon="ph:envelope-simple-open-bold",
-            is_hidden=False,
-            component="Layout",
-            keepalive=False,
-            redirect="/exchange/accounts",
-        )
+        try:
+            exchange_menu = await Menu.create(
+                menu_type=MenuType.CATALOG,
+                name="邮件服务",
+                path="/exchange",
+                order=2,  # 邮件服务
+                parent_id=0,
+                icon="ph:envelope-simple-open-bold",
+                is_hidden=False,
+                component="Layout",
+                keepalive=False,
+                redirect="/exchange/accounts",
+            )
+        except IntegrityError:
+            # 竞态条件，忽略
+            exchange_menu = await Menu.get(name="邮件服务")
 
     # 检查并创建子菜单
     exchange_children = [
