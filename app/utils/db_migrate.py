@@ -22,61 +22,35 @@ import sys
 from urllib.parse import urlparse
 
 
-def parse_database_url(database_url: str) -> dict:
-    """Parse DATABASE_URL/MYSQL_URL into connection parameters"""
-    parsed = urlparse(database_url)
-    return {
-        "host": parsed.hostname or "localhost",
-        "port": parsed.port or 3306,
-        "user": parsed.username or "root",
-        "password": parsed.password or "",
-        "database": parsed.path.lstrip("/") if parsed.path else "exchange_gateway",
-    }
-
-
 def get_tortoise_config():
     """
     构建独立的 Tortoise ORM 配置
     不依赖 app.settings，避免验证逻辑阻止启动
     """
     # 优先解析 MYSQL_URL / DATABASE_URL
-    database_url = os.getenv("MYSQL_URL") or os.getenv("DATABASE_URL", "")
-    if database_url:
-        db_config = parse_database_url(database_url)
-        db_host = os.getenv("DB_HOST", db_config["host"])
-        db_port = int(os.getenv("DB_PORT", str(db_config["port"])))
-        db_user = os.getenv("DB_USER", db_config["user"])
-        db_password = os.getenv("DB_PASSWORD", db_config["password"])
-        db_name = os.getenv("DB_NAME", db_config["database"])
-    else:
-        # 回退到独立环境变量
-        db_host = os.getenv("DB_HOST", "localhost")
-        db_port = int(os.getenv("DB_PORT", "3306"))
-        db_user = os.getenv("DB_USER", "root")
-        db_password = os.getenv("DB_PASSWORD", "")
-        db_name = os.getenv("DB_NAME", "exchange_gateway")
+    database_url = os.getenv("MYSQL_URL") or os.getenv("DATABASE_URL")
+    
+    # DEV_MODE 默认值
+    if not database_url:
+        dev_mode = os.getenv("DEV_MODE", "false").lower() in ("true", "1", "yes")
+        if dev_mode:
+            database_url = "mysql://root:dev_password@localhost:3306/exchange_gateway"
+        else:
+            print("ERROR: DATABASE_URL or MYSQL_URL must be set in production")
+            sys.exit(1)
 
-    # DEV_MODE 时使用默认密码
-    dev_mode = os.getenv("DEV_MODE", "false").lower() in ("true", "1", "yes")
-    if dev_mode and not db_password:
-        db_password = "dev_password"
-
-    if not db_password:
-        print("WARNING: DB_PASSWORD not set, using empty password")
+    # 动态检测引擎
+    db_engine = "tortoise.backends.asyncpg" if database_url.lower().startswith("postgres") else "tortoise.backends.mysql"
 
     return {
         "connections": {
-            "mysql": {
-                "engine": "tortoise.backends.mysql",
+            "default": {
+                "engine": db_engine,
                 "credentials": {
-                    "host": db_host,
-                    "port": db_port,
-                    "user": db_user,
-                    "password": db_password,
-                    "database": db_name,
+                    "url": database_url,
                     "minsize": 5,
                     "maxsize": 20,
-                    "charset": "utf8mb4",
+                    "charset": "utf8mb4" if "mysql" in db_engine else None,
                 },
             },
         },
@@ -88,7 +62,7 @@ def get_tortoise_config():
                     "app.models.webhook",
                     "aerich.models",
                 ],
-                "default_connection": "mysql",
+                "default_connection": "default",
             },
         },
         "use_tz": False,
@@ -106,9 +80,16 @@ async def run_migration():
     tortoise_config = get_tortoise_config()
 
     # 打印配置信息（不包含密码）
-    print(f"DB Host: {tortoise_config['connections']['mysql']['credentials']['host']}")
-    print(f"DB Port: {tortoise_config['connections']['mysql']['credentials']['port']}")
-    print(f"DB Name: {tortoise_config['connections']['mysql']['credentials']['database']}")
+    db_url = tortoise_config['connections']['default']['credentials']['url']
+    # 隐藏密码进行打印
+    from urllib.parse import urlparse, urlunparse
+    parsed = urlparse(db_url)
+    # 构造安全 URL (隐藏密码)
+    netloc = f"{parsed.username}:****@{parsed.hostname}"
+    if parsed.port:
+        netloc += f":{parsed.port}"
+    safe_url = urlunparse(parsed._replace(netloc=netloc))
+    print(f"Database URL: {safe_url}")
     print()
 
     # 初始化 Tortoise ORM

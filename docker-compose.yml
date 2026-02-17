@@ -49,11 +49,8 @@ services:
     restart: unless-stopped
     environment:
       - ENV=${ENV:-dev}
-      - DB_HOST=${DB_HOST:-mysql}
-      - DB_PORT=${DB_PORT:-3306}
-      - DB_USER=${DB_USER:-root}
-      - DB_PASSWORD=${DB_PASSWORD:-root123}
-      - DB_NAME=${DB_NAME:-exchange_gateway}
+      - PORT=${BACKEND_PORT:-8000}
+      - DATABASE_URL=${DATABASE_URL:-mysql://root:root123@mysql:3306/exchange_gateway}
       - SECRET_KEY=${SECRET_KEY}
       - WORKERS=${WORKERS:-2}
       # Exchange mail service configuration (no defaults - must be configured)
@@ -62,8 +59,9 @@ services:
       - EXCHANGE_EMAIL_SUFFIX=${EXCHANGE_EMAIL_SUFFIX}
       - EXCHANGE_ENCRYPTION_KEY=${EXCHANGE_ENCRYPTION_KEY}
       - WEBHOOK_ALLOW_PRIVATE_URLS=true
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
     ports:
-      - "18001:8000"
+      - "18001:${BACKEND_PORT:-8000}"
     depends_on:
       mysql:
         condition: service_healthy
@@ -91,14 +89,12 @@ services:
     entrypoint: ["/opt/app/entrypoint-worker.sh"]
     environment:
       - ENV=${ENV:-dev}
-      - DB_HOST=${DB_HOST:-mysql}
-      - DB_PORT=${DB_PORT:-3306}
-      - DB_USER=${DB_USER:-root}
-      - DB_PASSWORD=${DB_PASSWORD:-root123}
-      - DB_NAME=${DB_NAME:-exchange_gateway}
+      - PORT=${BACKEND_PORT:-8000}
+      - DATABASE_URL=${DATABASE_URL:-mysql://root:root123@mysql:3306/exchange_gateway}
       - SECRET_KEY=${SECRET_KEY}
       - EXCHANGE_ENCRYPTION_KEY=${EXCHANGE_ENCRYPTION_KEY}
       - WEBHOOK_ALLOW_PRIVATE_URLS=true
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
     depends_on:
       mysql:
         condition: service_healthy
@@ -110,6 +106,21 @@ services:
       - ./.docker-data/logs:/var/log/app
     networks:
       - backend
+
+  # ===========================================
+  # Redis (Used for Rate Limiting)
+  # ===========================================
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: exchange-gateway-redis
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 5
+  #   networks:
+  #     - backend
 
   # ===========================================
   # Nginx Reverse Proxy
@@ -124,8 +135,10 @@ services:
     restart: unless-stopped
     environment:
       - NGINX_ENV=${ENV:-dev}
+      - BACKEND_HOST=app
+      - BACKEND_PORT=${BACKEND_PORT:-8000}
     ports:
-      - "${NGINX_PORT:-80}:80"
+      - "${NGINX_PORT:-80}:8080"
     depends_on:
       app:
         condition: service_started

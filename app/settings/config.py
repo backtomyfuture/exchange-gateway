@@ -46,32 +46,8 @@ def get_secret(secret_name: str, default: str = "") -> str:
     return os.getenv(secret_name, default)
 
 
-def parse_database_url(database_url: str) -> dict:
-    """
-    解析 DATABASE_URL 环境变量（Railway MySQL 插件格式）。
-    
-    格式: mysql://user:password@host:port/database
-    
-    Args:
-        database_url: 数据库连接 URL
-    
-    Returns:
-        包含 host, port, user, password, database 的字典
-    """
-    parsed = urlparse(database_url)
-    return {
-        "host": parsed.hostname or "localhost",
-        "port": parsed.port or 3306,
-        "user": parsed.username or "root",
-        "password": parsed.password or "",
-        "database": parsed.path.lstrip("/") if parsed.path else "exchange_gateway",
-    }
-
-
-# 在类外解析 DATABASE_URL/MYSQL_URL，以便在类属性中使用
-# Railway MySQL 插件使用 MYSQL_URL
-_database_url = os.getenv("MYSQL_URL") or os.getenv("DATABASE_URL", "")
-_db_config = parse_database_url(_database_url) if _database_url else {}
+# DATABASE_URL: 优先使用 MYSQL_URL (Railway) 或 DATABASE_URL
+DATABASE_URL = os.getenv("MYSQL_URL") or os.getenv("DATABASE_URL", "")
 
 
 class Settings(BaseSettings):
@@ -104,13 +80,8 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 day
 
-    # Database configuration: 优先使用 MYSQL_URL/DATABASE_URL (Railway 插件格式)
-    # 如果未设置，则使用独立环境变量或默认值
-    DB_HOST: str = os.getenv("DB_HOST", _db_config.get("host", "localhost"))
-    DB_PORT: int = int(os.getenv("DB_PORT", str(_db_config.get("port", 3306))))
-    DB_USER: str = os.getenv("DB_USER", _db_config.get("user", "admin"))
-    DB_PASSWORD: str = os.getenv("DB_PASSWORD", _db_config.get("password", _DEV_DB_PASSWORD if DEV_MODE else ""))
-    DB_NAME: str = os.getenv("DB_NAME", _db_config.get("database", "exchange_gateway"))
+    # Database configuration
+    DATABASE_URL: str = DATABASE_URL or f"mysql://root:{_DEV_DB_PASSWORD}@localhost:3306/exchange_gateway"
 
     # 数据库连接池配置
     DB_POOL_MIN_SIZE: int = int(os.getenv("DB_POOL_MIN_SIZE", "5"))
@@ -180,52 +151,35 @@ class Settings(BaseSettings):
                 UserWarning,
             )
 
-        # 使用 get_secret 函数获取密码，支持 Docker Secrets
-        db_password = get_secret("DB_PASSWORD", self.DB_PASSWORD)
+        # 动态检测数据库驱动
+        db_url = self.DATABASE_URL.lower()
+        if db_url.startswith("postgres"):
+            db_engine = "tortoise.backends.asyncpg"
+            db_conn_name = "postgres"
+        else:
+            db_engine = "tortoise.backends.mysql"
+            db_conn_name = "mysql"
 
         self.TORTOISE_ORM = {
             "connections": {
-                # PostgreSQL configuration
-                # Install with: tortoise-orm[asyncpg]
-                # "postgres": {
-                #     "engine": "tortoise.backends.asyncpg",
-                #     "credentials": {
-                #         "host": os.getenv("DB_HOST", self.DB_HOST),
-                #         "port": int(os.getenv("DB_PORT", str(self.DB_PORT))),
-                #         "user": os.getenv("DB_USER", self.DB_USER),
-                #         "password": db_password,
-                #         "database": os.getenv("DB_NAME", self.DB_NAME),
-                #     },
-                # },
-                # SQLite configuration (fallback)
-                # "sqlite": {
-                #     "engine": "tortoise.backends.sqlite",
-                #     "credentials": {"file_path": f"{self.BASE_DIR}/db.sqlite3"},
-                # },
-                # MySQL/MariaDB configuration
-                # Install with: tortoise-orm[asyncmy]
-                "mysql": {
-                    "engine": "tortoise.backends.mysql",
+                db_conn_name: {
+                    "engine": db_engine,
                     "credentials": {
-                        "host": os.getenv("DB_HOST", self.DB_HOST),
-                        "port": int(os.getenv("DB_PORT", "3306")),
-                        "user": os.getenv("DB_USER", self.DB_USER),
-                        "password": db_password,
-                        "database": os.getenv("DB_NAME", self.DB_NAME),
+                        "url": self.DATABASE_URL,
                         "minsize": self.DB_POOL_MIN_SIZE,
                         "maxsize": self.DB_POOL_MAX_SIZE,
-                        "charset": "utf8mb4",
+                        "charset": "utf8mb4" if "mysql" in db_engine else None,
                     },
                 },
             },
             "apps": {
                 "models": {
                     "models": ["app.models", "aerich.models"],
-                    "default_connection": "mysql",
+                    "default_connection": db_conn_name,
                 },
             },
-            "use_tz": False,  # Whether to use timezone-aware datetimes
-            "timezone": "Asia/Shanghai",  # Timezone setting
+            "use_tz": False,
+            "timezone": "Asia/Shanghai",
         }
         return self
 
