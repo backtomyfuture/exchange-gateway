@@ -22,6 +22,18 @@ import sys
 from urllib.parse import urlparse
 
 
+def parse_database_url(database_url: str) -> dict:
+    """Parse DATABASE_URL into connection parameters."""
+    parsed = urlparse(database_url)
+    return {
+        "host": parsed.hostname or "localhost",
+        "port": parsed.port or 3306,
+        "user": parsed.username or "root",
+        "password": parsed.password or "",
+        "database": parsed.path.lstrip("/") if parsed.path else "exchange_gateway",
+    }
+
+
 def get_tortoise_config():
     """
     构建独立的 Tortoise ORM 配置
@@ -40,14 +52,26 @@ def get_tortoise_config():
             sys.exit(1)
 
     # 动态检测引擎
-    db_engine = "tortoise.backends.asyncpg" if database_url.lower().startswith("postgres") else "tortoise.backends.mysql"
+    if database_url.lower().startswith("postgres"):
+        db_engine = "tortoise.backends.asyncpg"
+        db_conn_name = "postgres"
+    else:
+        db_engine = "tortoise.backends.mysql"
+        db_conn_name = "mysql"
+    
+    # 解析参数
+    db_params = parse_database_url(database_url)
 
     return {
         "connections": {
-            "default": {
+            db_conn_name: {
                 "engine": db_engine,
                 "credentials": {
-                    "url": database_url,
+                    "host": db_params["host"],
+                    "port": db_params["port"],
+                    "user": db_params["user"],
+                    "password": db_params["password"],
+                    "database": db_params["database"],
                     "minsize": 5,
                     "maxsize": 20,
                     "charset": "utf8mb4" if "mysql" in db_engine else None,
@@ -62,7 +86,7 @@ def get_tortoise_config():
                     "app.models.webhook",
                     "aerich.models",
                 ],
-                "default_connection": "default",
+                "default_connection": db_conn_name,
             },
         },
         "use_tz": False,

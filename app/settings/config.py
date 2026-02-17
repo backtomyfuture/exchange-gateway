@@ -46,6 +46,18 @@ def get_secret(secret_name: str, default: str = "") -> str:
     return os.getenv(secret_name, default)
 
 
+def parse_database_url(database_url: str) -> dict:
+    """Parse DATABASE_URL into connection parameters."""
+    parsed = urlparse(database_url)
+    return {
+        "host": parsed.hostname or "localhost",
+        "port": parsed.port or 3306,
+        "user": parsed.username or "root",
+        "password": parsed.password or "",
+        "database": parsed.path.lstrip("/") if parsed.path else "exchange_gateway",
+    }
+
+
 # DATABASE_URL: 优先使用 MYSQL_URL (Railway) 或 DATABASE_URL
 DATABASE_URL = os.getenv("MYSQL_URL") or os.getenv("DATABASE_URL", "")
 
@@ -160,12 +172,19 @@ class Settings(BaseSettings):
             db_engine = "tortoise.backends.mysql"
             db_conn_name = "mysql"
 
+        # 解析 URL 以满足有些驱动（如 MySQL）对独立参数的需求
+        db_params = parse_database_url(self.DATABASE_URL)
+
         self.TORTOISE_ORM = {
             "connections": {
                 db_conn_name: {
                     "engine": db_engine,
                     "credentials": {
-                        "url": self.DATABASE_URL,
+                        "host": db_params["host"],
+                        "port": db_params["port"],
+                        "user": db_params["user"],
+                        "password": db_params["password"],
+                        "database": db_params["database"],
                         "minsize": self.DB_POOL_MIN_SIZE,
                         "maxsize": self.DB_POOL_MAX_SIZE,
                         "charset": "utf8mb4" if "mysql" in db_engine else None,
