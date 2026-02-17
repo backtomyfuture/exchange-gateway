@@ -103,16 +103,20 @@ async def run_migration():
     # 从环境变量构建配置
     tortoise_config = get_tortoise_config()
 
-    # 打印配置信息（不包含密码）
-    db_url = tortoise_config['connections']['default']['credentials']['url']
-    # 隐藏密码进行打印
-    from urllib.parse import urlparse, urlunparse
-    parsed = urlparse(db_url)
-    # 构造安全 URL (隐藏密码)
-    netloc = f"{parsed.username}:****@{parsed.hostname}"
-    if parsed.port:
-        netloc += f":{parsed.port}"
-    safe_url = urlunparse(parsed._replace(netloc=netloc))
+    # 获取配置中的数据库连接参数进行打印
+    # 动态获取第一个连接的名称
+    first_conn_name = next(iter(tortoise_config['connections']))
+    creds = tortoise_config['connections'][first_conn_name]['credentials']
+    
+    # 构造显示的 URL (隐藏密码)
+    # 不再尝试从配置中读取 'url'，而是从 get_tortoise_config 解析出的参数重组
+    scheme = "postgres" if "postgres" in tortoise_config['connections'][first_conn_name]['engine'] else "mysql"
+    user = creds.get('user', 'root')
+    host = creds.get('host', 'localhost')
+    port = creds.get('port', 3306)
+    database = creds.get('database', 'exchange_gateway')
+    
+    safe_url = f"{scheme}://{user}:****@{host}:{port}/{database}"
     print(f"Database URL: {safe_url}")
     print()
 
