@@ -95,214 +95,155 @@ async def init_superuser():
 async def init_menus():
     """
     初始化菜单
-    使用异常处理避免多 worker 竞态条件和重复数据问题
+    使用异常处理和去重逻辑避免多 worker 竞态条件和重复数据问题
     """
     from tortoise.exceptions import MultipleObjectsReturned
 
-    # 1. 邮件服务 (作为首选菜单)
-    # 尝试获取及其ID，以支持幂等性
-    try:
-        exchange_menu = await Menu.get(name="邮件服务")
-    except MultipleObjectsReturned:
-        # 存在重复数据，删除后重新获取第一个
-        duplicates = await Menu.filter(name="邮件服务").all()
-        for dup in duplicates[1:]:
-            await dup.delete()
-        exchange_menu = await Menu.get(name="邮件服务")
-    except Exception:
-        # 菜单不存在，创建新菜单
-        exchange_menu = None
-
-    if not exchange_menu:
+    async def get_or_create_catalog(name: str, path: str, order: int, icon: str, redirect: str):
+        """获取或创建目录，如果存在多个则删除多余的"""
         try:
-            exchange_menu = await Menu.create(
-                menu_type=MenuType.CATALOG,
-                name="邮件服务",
-                path="/exchange",
-                order=2,  # 邮件服务
-                parent_id=0,
-                icon="ph:envelope-simple-open-bold",
-                is_hidden=False,
-                component="Layout",
-                keepalive=False,
-                redirect="/exchange/accounts",
-            )
-        except IntegrityError:
-            # 竞态条件，忽略
-            exchange_menu = await Menu.get(name="邮件服务")
+            catalog = await Menu.get(name=name, parent_id=0)
+        except MultipleObjectsReturned:
+            duplicates = await Menu.filter(name=name, parent_id=0).all()
+            for dup in duplicates[1:]:
+                await dup.delete()
+            catalog = await Menu.get(name=name, parent_id=0)
+        except Exception:
+            catalog = None
 
-    # 检查并创建子菜单
+        if not catalog:
+            try:
+                catalog = await Menu.create(
+                    menu_type=MenuType.CATALOG,
+                    name=name,
+                    path=path,
+                    order=order,
+                    parent_id=0,
+                    icon=icon,
+                    is_hidden=False,
+                    component="Layout",
+                    keepalive=False,
+                    redirect=redirect,
+                )
+            except IntegrityError:
+                catalog = await Menu.get(name=name, parent_id=0)
+        return catalog
+
+    # 1. 邮件服务
+    exchange_menu = await get_or_create_catalog(
+        name="邮件服务",
+        path="/exchange",
+        order=2,
+        icon="ph:envelope-simple-open-bold",
+        redirect="/exchange/accounts"
+    )
+
     exchange_children = [
-        {
-            "name": "账户管理",
-            "path": "accounts",
-            "component": "/exchange/accounts",
-            "icon": "material-symbols:contact-mail-outline",
-            "order": 1,
-        },
-        {
-            "name": "API密钥",
-            "path": "keys",
-            "component": "/exchange/keys",
-            "icon": "material-symbols:key-outline",
-            "order": 2,
-        },
-        {
-            "name": "Webhook订阅",
-            "path": "webhooks",
-            "component": "/exchange/webhooks",
-            "icon": "mdi:webhook",
-            "order": 3,
-        },
-        {
-            "name": "邮件模板",
-            "path": "templates",
-            "component": "/exchange/templates",
-            "icon": "material-symbols:article-outline",
-            "order": 4,
-        },
-        {
-            "name": "操作日志",
-            "path": "logs",
-            "component": "/exchange/logs",
-            "icon": "material-symbols:history",
-            "order": 5,
-        },
-        {
-            "name": "使用统计",
-            "path": "stats",
-            "component": "/exchange/stats",
-            "icon": "material-symbols:analytics-outline",
-            "order": 6,
-        },
+        {"name": "账户管理", "path": "accounts", "component": "/exchange/accounts", "icon": "material-symbols:contact-mail-outline", "order": 1},
+        {"name": "API密钥", "path": "keys", "component": "/exchange/keys", "icon": "material-symbols:key-outline", "order": 2},
+        {"name": "Webhook订阅", "path": "webhooks", "component": "/exchange/webhooks", "icon": "mdi:webhook", "order": 3},
+        {"name": "邮件模板", "path": "templates", "component": "/exchange/templates", "icon": "material-symbols:article-outline", "order": 4},
+        {"name": "操作日志", "path": "logs", "component": "/exchange/logs", "icon": "material-symbols:history", "order": 5},
+        {"name": "使用统计", "path": "stats", "component": "/exchange/stats", "icon": "material-symbols:analytics-outline", "order": 6},
     ]
 
     for child in exchange_children:
-        if not await Menu.filter(name=child["name"], parent_id=exchange_menu.id).exists():
-            await Menu.create(
-                menu_type=MenuType.MENU,
-                name=child["name"],
-                path=child["path"],
-                order=child["order"],
-                parent_id=exchange_menu.id,
-                icon=child["icon"],
-                is_hidden=False,
-                component=child["component"],
-                keepalive=False,
-            )
+        # 检查并去重子菜单
+        child_menus = await Menu.filter(name=child["name"], parent_id=exchange_menu.id).all()
+        if len(child_menus) > 1:
+            for dup in child_menus[1:]:
+                await dup.delete()
+        
+        if not child_menus:
+            try:
+                await Menu.create(
+                    menu_type=MenuType.MENU,
+                    name=child["name"],
+                    path=child["path"],
+                    order=child["order"],
+                    parent_id=exchange_menu.id,
+                    icon=child["icon"],
+                    is_hidden=False,
+                    component=child["component"],
+                    keepalive=False,
+                )
+            except IntegrityError:
+                pass
 
     # 2. 系统管理
-    if not await Menu.filter(name="系统管理").exists():
-        parent_menu = await Menu.create(
-            menu_type=MenuType.CATALOG,
-            name="系统管理",
-            path="/system",
-            order=1,
-            parent_id=0,
-            icon="carbon:gui-management",
-            is_hidden=False,
-            component="Layout",
-            keepalive=False,
-            redirect="/system/user",
-        )
-        children_menu = [
-            Menu(
-                menu_type=MenuType.MENU,
-                name="用户管理",
-                path="user",
-                order=1,
-                parent_id=parent_menu.id,
-                icon="material-symbols:person-outline-rounded",
-                is_hidden=False,
-                component="/system/user",
-                keepalive=False,
-            ),
-            Menu(
-                menu_type=MenuType.MENU,
-                name="角色管理",
-                path="role",
-                order=2,
-                parent_id=parent_menu.id,
-                icon="carbon:user-role",
-                is_hidden=False,
-                component="/system/role",
-                keepalive=False,
-            ),
-            Menu(
-                menu_type=MenuType.MENU,
-                name="菜单管理",
-                path="menu",
-                order=3,
-                parent_id=parent_menu.id,
-                icon="material-symbols:list-alt-outline",
-                is_hidden=False,
-                component="/system/menu",
-                keepalive=False,
-            ),
-            Menu(
-                menu_type=MenuType.MENU,
-                name="API管理",
-                path="api",
-                order=4,
-                parent_id=parent_menu.id,
-                icon="ant-design:api-outlined",
-                is_hidden=False,
-                component="/system/api",
-                keepalive=False,
-            ),
-            Menu(
-                menu_type=MenuType.MENU,
-                name="部门管理",
-                path="dept",
-                order=5,
-                parent_id=parent_menu.id,
-                icon="mingcute:department-line",
-                is_hidden=False,
-                component="/system/dept",
-                keepalive=False,
-            ),
-            Menu(
-                menu_type=MenuType.MENU,
-                name="审计日志",
-                path="auditlog",
-                order=6,
-                parent_id=parent_menu.id,
-                icon="ph:clipboard-text-bold",
-                is_hidden=False,
-                component="/system/auditlog",
-                keepalive=False,
-            ),
-        ]
-        await Menu.bulk_create(children_menu)
+    system_menu = await get_or_create_catalog(
+        name="系统管理",
+        path="/system",
+        order=1,
+        icon="carbon:gui-management",
+        redirect="/system/user"
+    )
+
+    system_children = [
+        {"name": "用户管理", "path": "user", "order": 1, "icon": "material-symbols:person-outline-rounded", "component": "/system/user"},
+        {"name": "角色管理", "path": "role", "order": 2, "icon": "carbon:user-role", "component": "/system/role"},
+        {"name": "菜单管理", "path": "menu", "order": 3, "icon": "material-symbols:list-alt-outline", "component": "/system/menu"},
+        {"name": "API管理", "path": "api", "order": 4, "icon": "ant-design:api-outlined", "component": "/system/api"},
+        {"name": "部门管理", "path": "dept", "order": 5, "icon": "mingcute:department-line", "component": "/system/dept"},
+        {"name": "审计日志", "path": "auditlog", "order": 6, "icon": "ph:clipboard-text-bold", "component": "/system/auditlog"},
+    ]
+
+    for child in system_children:
+        child_menus = await Menu.filter(name=child["name"], parent_id=system_menu.id).all()
+        if len(child_menus) > 1:
+            for dup in child_menus[1:]:
+                await dup.delete()
+        
+        if not child_menus:
+            try:
+                await Menu.create(
+                    menu_type=MenuType.MENU,
+                    name=child["name"],
+                    path=child["path"],
+                    order=child["order"],
+                    parent_id=system_menu.id,
+                    icon=child["icon"],
+                    is_hidden=False,
+                    component=child["component"],
+                    keepalive=False,
+                )
+            except IntegrityError:
+                pass
 
     # 3. 开发者服务
-    if not await Menu.filter(name="开发者服务").exists():
-        dev_menu = await Menu.create(
-            menu_type=MenuType.CATALOG,
-            name="开发者服务",
-            path="/developer",
-            order=3,
-            parent_id=0,
-            icon="material-symbols:code",
-            is_hidden=False,
-            component="Layout",
-            keepalive=False,
-            redirect="/developer/index",
-        )
-        dev_children = [
-            Menu(
-                menu_type=MenuType.MENU,
-                name="开发者指南",
-                path="index",
-                order=1,
-                parent_id=dev_menu.id,
-                icon="material-symbols:help-outline",
-                is_hidden=False,
-                component="/developer",
-                keepalive=False,
-            ),
-        ]
-        await Menu.bulk_create(dev_children)
+    dev_menu = await get_or_create_catalog(
+        name="开发者服务",
+        path="/developer",
+        order=3,
+        icon="material-symbols:code",
+        redirect="/developer/index"
+    )
+
+    dev_children = [
+        {"name": "开发者指南", "path": "index", "order": 1, "icon": "material-symbols:help-outline", "component": "/developer"},
+    ]
+
+    for child in dev_children:
+        child_menus = await Menu.filter(name=child["name"], parent_id=dev_menu.id).all()
+        if len(child_menus) > 1:
+            for dup in child_menus[1:]:
+                await dup.delete()
+        
+        if not child_menus:
+            try:
+                await Menu.create(
+                    menu_type=MenuType.MENU,
+                    name=child["name"],
+                    path=child["path"],
+                    order=child["order"],
+                    parent_id=dev_menu.id,
+                    icon=child["icon"],
+                    is_hidden=False,
+                    component=child["component"],
+                    keepalive=False,
+                )
+            except IntegrityError:
+                pass
 
 
 async def init_apis():
