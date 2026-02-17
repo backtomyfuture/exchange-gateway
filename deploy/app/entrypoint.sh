@@ -10,8 +10,12 @@ set -e
 # 配置
 APP_MODULE="${APP_MODULE:-app:app}"
 WORKERS="${WORKERS:-1}"
-# 强制绑定到 [::]:8000 端口，支持 IPv4 和 IPv6，且与 Railway 域名设置一致
-BIND="[::]:8000"
+
+# Railway 最佳实践：优先使用 $PORT 环境变量，如果未设置则默认为 8000
+# 这里的端口必须与 railway.json 中的 deploy.port 保持一致
+ACTUAL_PORT="${PORT:-8000}"
+BIND="0.0.0.0:${ACTUAL_PORT}"
+
 echo "DEBUG: BIND is set to ${BIND}"
 WORKER_CLASS="${WORKER_CLASS:-uvicorn.workers.UvicornWorker}"
 TIMEOUT="${TIMEOUT:-120}"
@@ -104,11 +108,15 @@ if [ "${AUTO_MIGRATE:-true}" = "true" ] || [ "${AUTO_MIGRATE:-true}" = "1" ]; th
 fi
 
 # 启动应用
-echo "Starting Gunicorn on port ${PORT:-8000}..."
+echo "Starting Gunicorn on ${BIND}..."
+echo "  APP_MODULE:  ${APP_MODULE}"
+echo "  WORKERS:     ${WORKERS}"
+echo "  TIMEOUT:     ${TIMEOUT}s"
+
 exec gunicorn "${APP_MODULE}" \
     --workers "${WORKERS}" \
     --worker-class "${WORKER_CLASS}" \
-    --bind "0.0.0.0:${PORT:-8000}" \
+    --bind "${BIND}" \
     --timeout "${TIMEOUT}" \
     --graceful-timeout "${GRACEFUL_TIMEOUT}" \
     --keep-alive "${KEEP_ALIVE}" \

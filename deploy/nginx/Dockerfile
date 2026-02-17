@@ -31,11 +31,14 @@ COPY deploy/nginx/nginx.dev.conf /deploy/nginx/nginx.dev.conf
 # 根据 NGINX_ENV 选择配置文件
 RUN if [ "$NGINX_ENV" = "dev" ]; then \
         echo "Using development nginx config (HTTP)" && \
-        cp /deploy/nginx/nginx.dev.conf /etc/nginx/nginx.conf; \
+        cp /deploy/nginx/nginx.dev.conf /etc/nginx/nginx.template; \
     else \
         echo "Using production nginx config (HTTPS)" && \
-        cp /deploy/nginx/nginx.conf /etc/nginx/nginx.conf; \
+        cp /deploy/nginx/nginx.conf /etc/nginx/nginx.template; \
     fi
+
+# 安装 gettext 以获取 envsubst，并清理缓存
+RUN apk add --no-cache gettext
 
 # 仅在生产模式且 SSL 证书存在时复制
 # SSL certificates should be mounted at runtime via volumes or provided during build
@@ -53,4 +56,6 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 EXPOSE 8080
 
-CMD ["nginx", "-g", "daemon off;"]
+# 在启动 Nginx 前使用 envsubst 替换环境变量
+# 如果没设置变量，设置默认值以防报错
+CMD ["/bin/sh", "-c", "export BACKEND_HOST=${BACKEND_HOST:-app.railway.internal} && export BACKEND_PORT=${BACKEND_PORT:-8000} && envsubst '$BACKEND_HOST $BACKEND_PORT' < /etc/nginx/nginx.template > /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'"]
