@@ -123,35 +123,33 @@ class TestWebhookDispatcher:
         return webhook
 
     @pytest.mark.asyncio
-    async def test_dispatch_success(self, dispatcher, mock_webhook):
-        """测试成功分发"""
-        event_data = {"event": "NewMailEvent", "account_id": 1}
+    async def test_dispatch_enqueues_arq_job(self, dispatcher, mock_webhook):
+        """dispatch() persists a WebhookDelivery and enqueues an ARQ job."""
+        from unittest.mock import AsyncMock as AM
+        event_data = {"event_type": "NewMailEvent", "account_id": 1}
 
-        with patch("app.services.exchange.webhook_listener.get_crypto") as mock_crypto:
-            mock_crypto.return_value.decrypt.return_value = "secret_key"
+        mock_delivery = MagicMock()
+        mock_delivery.id = 42
+        mock_pool = MagicMock()
+        mock_pool.enqueue_job = AM()
 
-            with patch.object(dispatcher, "_send_request", new_callable=AsyncMock) as mock_send:
-                mock_send.return_value = MagicMock(status_code=200)
+        with patch("app.services.exchange.webhook_listener.WebhookDelivery") as mock_delivery_cls, \
+             patch("app.services.exchange.webhook_listener.get_arq_pool", return_value=mock_pool):
+            mock_delivery_cls.create = AM(return_value=mock_delivery)
+            await dispatcher.dispatch(mock_webhook, event_data)
 
-                await dispatcher.dispatch(mock_webhook, event_data)
-
-                mock_send.assert_called_once()
-                # 验证 webhook 失败计数重置
-                assert mock_webhook.failure_count == 0
+        mock_delivery_cls.create.assert_called_once()
+        mock_pool.enqueue_job.assert_called_once_with("deliver_webhook_task", 42)
 
     @pytest.mark.asyncio
-    async def test_dispatch_circuit_breaker_open(self, dispatcher, mock_webhook):
-        """测试断路器开启时分发"""
-        event_data = {"event": "NewMailEvent"}
+    async def test_dispatch_handles_error_gracefully(self, dispatcher, mock_webhook):
+        """dispatch() logs errors without raising."""
+        event_data = {"event_type": "NewMailEvent"}
 
-        # 手动设置断路器为开启状态
-        circuit_breaker = dispatcher._get_circuit_breaker(mock_webhook.url)
-        circuit_breaker.state = CircuitBreaker.CircuitState.OPEN
-        circuit_breaker.last_failure_time = MagicMock()
-
-        with patch.object(circuit_breaker, "_should_attempt_reset", return_value=False):
+        with patch("app.services.exchange.webhook_listener.WebhookDelivery") as mock_delivery_cls:
+            mock_delivery_cls.create.side_effect = Exception("DB error")
+            # Should not raise
             await dispatcher.dispatch(mock_webhook, event_data)
-            # 断路器开启时不会发送请求
 
     def test_get_circuit_breaker(self, dispatcher):
         """测试获取断路器"""
