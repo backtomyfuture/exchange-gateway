@@ -11,10 +11,8 @@ import time
 import json
 import hmac
 import hashlib
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from enum import Enum
+from typing import Dict, List, Optional, Any, ClassVar
+from datetime import datetime
 
 import httpx
 from tortoise import Tortoise
@@ -43,92 +41,10 @@ SHUTDOWN = False
 
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
+from app.services.exchange.circuit_breaker import CircuitBreaker, CircuitState, CircuitOpenError
 
-class CircuitState(Enum):
-    """断路器状态"""
-
-    CLOSED = "closed"  # 正常状态，允许请求
-    OPEN = "open"  # 断路状态，拒绝请求
-    HALF_OPEN = "half_open"  # 半开状态，测试恢复
-
-
-@dataclass
-class CircuitBreaker:
-    """
-    断路器模式实现
-    防止级联故障，保护系统稳定性
-    """
-
-    failure_threshold: int = 5  # 失败阈值
-    recovery_timeout: int = 30  # 恢复超时（秒）
-    half_open_max_calls: int = 3  # 半开状态最大测试请求数
-
-    state: CircuitState = field(default=CircuitState.CLOSED)
-    failure_count: int = field(default=0)
-    success_count: int = field(default=0)
-    last_failure_time: Optional[datetime] = field(default=None)
-    _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-
-    async def call(self, func, *args, **kwargs):
-        """
-        执行受保护的函数调用
-        """
-        async with self._lock:
-            if self.state == CircuitState.OPEN:
-                if self._should_attempt_reset():
-                    self.state = CircuitState.HALF_OPEN
-                    self.success_count = 0
-                    logger.info("断路器进入半开状态，尝试恢复")
-                else:
-                    raise CircuitBreakerOpen("断路器处于开启状态，请求被拒绝")
-
-            if self.state == CircuitState.HALF_OPEN and self.success_count >= self.half_open_max_calls:
-                raise CircuitBreakerOpen("半开状态测试请求数已达上限")
-
-        try:
-            result = await func(*args, **kwargs)
-            await self._on_success()
-            return result
-        except Exception as e:
-            await self._on_failure()
-            raise
-
-    def _should_attempt_reset(self) -> bool:
-        """检查是否应该尝试重置断路器"""
-        if self.last_failure_time is None:
-            return True
-        return datetime.now() - self.last_failure_time > timedelta(seconds=self.recovery_timeout)
-
-    async def _on_success(self):
-        """成功回调"""
-        async with self._lock:
-            if self.state == CircuitState.HALF_OPEN:
-                self.success_count += 1
-                if self.success_count >= self.half_open_max_calls:
-                    self.state = CircuitState.CLOSED
-                    self.failure_count = 0
-                    logger.info("断路器关闭，服务恢复正常")
-            else:
-                self.failure_count = 0
-
-    async def _on_failure(self):
-        """失败回调"""
-        async with self._lock:
-            self.failure_count += 1
-            self.last_failure_time = datetime.now()
-
-            if self.state == CircuitState.HALF_OPEN:
-                self.state = CircuitState.OPEN
-                logger.warning(f"断路器开启（半开状态测试失败），失败次数: {self.failure_count}")
-            elif self.failure_count >= self.failure_threshold:
-                self.state = CircuitState.OPEN
-                logger.warning(f"断路器开启，连续失败次数: {self.failure_count}")
-
-
-class CircuitBreakerOpen(Exception):
-    """断路器开启异常"""
-
-    pass
+# Backward-compat alias for existing imports
+CircuitBreakerOpen = CircuitOpenError
 
 
 class WebhookDispatcher:
