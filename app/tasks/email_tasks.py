@@ -5,10 +5,12 @@ Replaces the in-process BackgroundTask pattern. Idempotent: if the log
 entry is not in 'pending' state, silently skips.
 """
 import logging
+import time
 
 from arq import Retry
 from exchangelib.errors import TransportError, ErrorTimeoutExpired
 
+from app.core.metrics import email_sent_total, email_duration_seconds
 from app.models.exchange import ExchangeMailLog
 from app.schemas.exchange import EmailSendRequest
 from app.services.exchange.email_service import get_email_service
@@ -46,7 +48,11 @@ async def send_email_task(ctx: dict, mail_log_id: int) -> dict:
     service = get_email_service()
 
     try:
+        start = time.monotonic()
         await service._execute_send(request.account_id, request)
+        duration = time.monotonic() - start
+        email_duration_seconds.labels(account_id=str(request.account_id)).observe(duration)
+        email_sent_total.labels(account_id=str(request.account_id), status="success").inc()
         log.update_from_dict({"status": "success"})
         await log.save()
         logger.info("send_email_task: log %d sent successfully", mail_log_id)
@@ -55,6 +61,7 @@ async def send_email_task(ctx: dict, mail_log_id: int) -> dict:
     except _RETRYABLE as exc:
         attempt = ctx["job_try"]
         if attempt > len(_RETRY_DELAYS):
+            email_sent_total.labels(account_id=str(log.account_id), status="failed").inc()
             log.update_from_dict({"status": "failed", "error_message": str(exc)})
             await log.save()
             raise
@@ -66,6 +73,7 @@ async def send_email_task(ctx: dict, mail_log_id: int) -> dict:
         raise Retry(defer=delay)
 
     except Exception as exc:
+        email_sent_total.labels(account_id=str(log.account_id), status="failed").inc()
         log.update_from_dict({"status": "failed", "error_message": str(exc)})
         await log.save()
         logger.error("send_email_task: log %d non-retryable error: %s", mail_log_id, exc)

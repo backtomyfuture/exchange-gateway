@@ -52,6 +52,9 @@ def create_app() -> FastAPI:
     register_exceptions(app)
     register_routers(app, prefix="/api")
 
+    from app.core.metrics import setup_instrumentator
+    setup_instrumentator(app)
+
     @app.get("/", tags=["Root"], summary="首页欢迎信息")
     async def root():
         return {"status": "ok", "message": "Exchange Gateway is running"}

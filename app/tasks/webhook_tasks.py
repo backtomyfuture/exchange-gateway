@@ -8,6 +8,7 @@ import time
 import httpx
 from arq import Retry
 
+from app.core.metrics import webhook_delivery_total
 from app.models.webhook import WebhookDelivery, WebhookSubscription
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,7 @@ async def deliver_webhook_task(ctx: dict, delivery_id: int) -> dict:
             "last_error": None,
         })
         await delivery.save()
+        webhook_delivery_total.labels(status="delivered").inc()
         logger.info("deliver_webhook_task: delivery %d delivered (attempt %d)", delivery_id, attempt)
         return {"success": True, "delivery_id": delivery_id}
 
@@ -68,6 +70,7 @@ async def deliver_webhook_task(ctx: dict, delivery_id: int) -> dict:
         if attempt >= MAX_DELIVERY_ATTEMPTS:
             delivery.update_from_dict({"status": "dead"})
             await delivery.save()
+            webhook_delivery_total.labels(status="dead").inc()
             logger.error(
                 "deliver_webhook_task: delivery %d dead after %d attempts: %s",
                 delivery_id, attempt, exc,
