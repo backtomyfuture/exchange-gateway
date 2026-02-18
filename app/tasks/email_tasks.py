@@ -38,7 +38,7 @@ async def send_email_task(ctx: dict, mail_log_id: int) -> dict:
 
     if not log.request_body:
         logger.error("send_email_task: log %d has no request_body, marking failed", mail_log_id)
-        await log.update_from_dict({"status": "failed", "error_message": "No request_body stored"})
+        log.update_from_dict({"status": "failed", "error_message": "No request_body stored"})
         await log.save()
         return {"error": "no request_body"}
 
@@ -47,7 +47,7 @@ async def send_email_task(ctx: dict, mail_log_id: int) -> dict:
 
     try:
         await service._execute_send(request.account_id, request)
-        await log.update_from_dict({"status": "success"})
+        log.update_from_dict({"status": "success"})
         await log.save()
         logger.info("send_email_task: log %d sent successfully", mail_log_id)
         return {"success": True, "log_id": mail_log_id}
@@ -55,7 +55,7 @@ async def send_email_task(ctx: dict, mail_log_id: int) -> dict:
     except _RETRYABLE as exc:
         attempt = ctx["job_try"]
         if attempt > len(_RETRY_DELAYS):
-            await log.update_from_dict({"status": "failed", "error_message": str(exc)})
+            log.update_from_dict({"status": "failed", "error_message": str(exc)})
             await log.save()
             raise
         delay = _RETRY_DELAYS[attempt - 1]
@@ -66,7 +66,7 @@ async def send_email_task(ctx: dict, mail_log_id: int) -> dict:
         raise Retry(defer=delay)
 
     except Exception as exc:
-        await log.update_from_dict({"status": "failed", "error_message": str(exc)})
+        log.update_from_dict({"status": "failed", "error_message": str(exc)})
         await log.save()
         logger.error("send_email_task: log %d non-retryable error: %s", mail_log_id, exc)
         raise

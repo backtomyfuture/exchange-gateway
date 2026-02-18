@@ -9,9 +9,11 @@ def email_service():
     return EmailService()
 
 @pytest.fixture
-def mock_bg_tasks():
-    with patch("app.core.bgtask.BgTasks.add_task", new_callable=AsyncMock) as mock:
-        yield mock
+def mock_arq_pool():
+    mock_pool = AsyncMock()
+    mock_pool.enqueue_job = AsyncMock()
+    with patch("app.services.exchange.email_service.get_arq_pool", return_value=mock_pool):
+        yield mock_pool
 
 @pytest.fixture
 def mock_exchange_connection():
@@ -29,7 +31,7 @@ def mock_exchangelib_classes():
 
 
 @pytest.mark.asyncio
-async def test_send_email_enqueues_task(email_service, mock_bg_tasks):
+async def test_send_email_enqueues_task(email_service, mock_arq_pool):
     # Prepare request
     request = EmailSendRequest(
         account_id=1,
@@ -45,17 +47,15 @@ async def test_send_email_enqueues_task(email_service, mock_bg_tasks):
     assert result["success"] is True
     assert result["status"] == "queued"
     assert "log_id" in result
-    
-    # Verify log created
+
+    # Verify log created with request_body persisted
     log = await ExchangeMailLog.get(id=result["log_id"])
     assert log.status == "pending"
     assert log.subject == "Test Subject"
-    
-    # Verify background task added
-    mock_bg_tasks.assert_called_once()
-    args, kwargs = mock_bg_tasks.call_args
-    assert args[0] == email_service._send_email_bg_task
-    assert kwargs["log_id"] == log.id
+    assert log.request_body is not None
+
+    # Verify ARQ job enqueued
+    mock_arq_pool.enqueue_job.assert_called_once_with("send_email_task", log.id)
 
 @pytest.mark.asyncio
 async def test_send_email_bg_task_success(email_service, mock_exchange_connection):
@@ -66,7 +66,7 @@ async def test_send_email_bg_task_success(email_service, mock_exchange_connectio
         status="pending",
         subject="Test"
     )
-    
+
     request = EmailSendRequest(
         account_id=1,
         to=["test@example.com"],
@@ -76,20 +76,20 @@ async def test_send_email_bg_task_success(email_service, mock_exchange_connectio
 
     # Execute background task
     await email_service._send_email_bg_task(log.id, request)
-    
+
     # Verify success
     await log.refresh_from_db()
     assert log.status == "success"
-    
+
     # Verify exchange call
     mock_exchange_connection.account.return_value = MagicMock() # Mock account property
 
 @pytest.mark.asyncio
 async def test_send_email_bg_task_retry(email_service, mock_exchange_connection, mock_exchangelib_classes):
     from exchangelib.errors import TransportError
-    
+
     mock_message_cls, _, _ = mock_exchangelib_classes
-    
+
     # Create log entry
     log = await ExchangeMailLog.create(
         account_id=1,
@@ -97,7 +97,7 @@ async def test_send_email_bg_task_retry(email_service, mock_exchange_connection,
         status="pending",
         subject="Retry Test"
     )
-    
+
     request = EmailSendRequest(
         account_id=1,
         to=["test@example.com"],
@@ -114,15 +114,15 @@ async def test_send_email_bg_task_retry(email_service, mock_exchange_connection,
         TransportError("Fail 2"),
         None
     ]
-    
+
     # We also need to speed up sleep for tests
     with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
         # Execute background task
         await email_service._send_email_bg_task(log.id, request)
-        
+
         # Should have slept twice
         assert mock_sleep.call_count == 2
-    
+
     # Verify success eventually
     await log.refresh_from_db()
     assert log.status == "success"

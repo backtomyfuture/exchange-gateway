@@ -32,6 +32,7 @@ from app.schemas.exchange import (
     EmailForwardRequest,
 )
 
+from app.core.arq_pool import get_arq_pool
 from .connection_pool import get_exchange_connection
 
 
@@ -79,6 +80,9 @@ class EmailService:
         request_id = str(uuid.uuid4())[:8]
 
         try:
+            # Serialize request for ARQ recovery across restarts
+            request_data = request.model_dump()
+
             # 1. Create audit log entry (pending state – updated after send completes)
             log_entry = await ExchangeMailLog.create(
                 api_key_id=api_key_id,
@@ -92,23 +96,20 @@ class EmailService:
                 status="pending",
                 request_ip=request_ip,
                 request_id=request_id,
+                request_body=request_data,
             )
-            
-            # 2. 添加后台任务
-            from app.core.bgtask import BgTasks
-            await BgTasks.add_task(
-                self._send_email_bg_task,
-                log_id=log_entry.id,
-                request=request
-            )
-            
+
+            # 2. Enqueue persistent ARQ job instead of BackgroundTask
+            redis = get_arq_pool()
+            await redis.enqueue_job("send_email_task", log_entry.id)
+
             return {
                 "success": True,
                 "message": "邮件已加入发送队列",
                 "log_id": log_entry.id,
                 "status": "queued"
             }
-                
+
         except Exception as e:
             logger.error(f"邮件入队失败: {e}")
             return {
@@ -1186,46 +1187,24 @@ def get_email_service() -> EmailService:
 
 
 async def recover_pending_emails():
+    """Re-enqueue pending email logs into ARQ on startup.
+    Logs without request_body (pre-ARQ entries) are marked failed.
     """
-    Mark in-flight 'pending' send tasks as failed on service start-up.
-
-    Email body content is intentionally NOT persisted to the mail-log table,
-    so true re-delivery after a crash is impossible without the original
-    caller retrying.  We therefore mark these records as 'failed' with a
-    clear error message so operators know what happened, rather than
-    silently dropping them or spinning forever.
-
-    Returns:
-        dict: {"recovered": int, "failed": int}
-    """
-    cutoff_time = datetime.now() - timedelta(hours=24)
-    pending_logs = await ExchangeMailLog.filter(
-        status="pending",
-        action="send",
-        created_at__gte=cutoff_time,
-    ).all()
-
-    if not pending_logs:
-        return {"recovered": 0, "failed": 0}
-
-    logger.warning(
-        f"Found {len(pending_logs)} pending send task(s) from before restart. "
-        "Email content is not persisted; marking as failed. "
-        "Clients should retry these messages."
-    )
-
-    failed = 0
-    for log in pending_logs:
-        try:
-            log.status = "failed"
-            log.error_message = (
-                "Service restarted before send completed. "
-                "Email content not persisted – caller must retry."
-            )
-            await log.save()
-            failed += 1
-        except Exception as e:
-            logger.error(f"Failed to update log {log.id}: {e}")
-
-    logger.info(f"Startup recovery complete: {failed} task(s) marked as failed.")
-    return {"recovered": 0, "failed": failed}
+    try:
+        redis = get_arq_pool()
+        pending = await ExchangeMailLog.filter(action="send", status="pending").all()
+        recovered, failed = 0, 0
+        for log in pending:
+            if log.request_body:
+                await redis.enqueue_job("send_email_task", log.id)
+                recovered += 1
+            else:
+                log.update_from_dict({
+                    "status": "failed",
+                    "error_message": "No request_body; pre-ARQ entry cannot be retried",
+                })
+                await log.save()
+                failed += 1
+        logger.info("Email recovery: %d re-enqueued, %d marked failed", recovered, failed)
+    except Exception as e:
+        logger.error("Email recovery failed: %s", e)
