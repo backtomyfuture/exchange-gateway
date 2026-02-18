@@ -1,66 +1,90 @@
-"""
-健康检查端点
-用于容器编排和负载均衡器的健康检查
-"""
+"""Enhanced health check: 200 (healthy) / 207 (degraded) / 503 (unhealthy)."""
+import time
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from tortoise import Tortoise
-
-from app.schemas.base import Success
 from app.settings import settings
 
 router = APIRouter()
 
 
-@router.get("", summary="健康检查")
-async def health_check():
-    """
-    基础健康检查端点
-    返回应用运行状态
-    """
-    return Success(
-        data={
-            "status": "healthy",
-            "version": settings.VERSION,
+async def _check_database() -> dict:
+    try:
+        start = time.monotonic()
+        conn = Tortoise.get_connection("default")
+        await conn.execute_query("SELECT 1")
+        return {"status": "ok", "latency_ms": round((time.monotonic() - start) * 1000, 1)}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+
+
+async def _check_redis() -> dict:
+    try:
+        from app.core.arq_pool import get_arq_pool
+        start = time.monotonic()
+        await get_arq_pool().ping()
+        return {"status": "ok", "latency_ms": round((time.monotonic() - start) * 1000, 1)}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+
+
+async def _check_exchange_accounts() -> dict:
+    try:
+        from app.services.exchange.connection_pool import get_connection_pool
+        from app.services.exchange.circuit_breaker import CircuitState
+        breakers = get_connection_pool()._circuit_breakers
+        open_ids = [aid for aid, cb in breakers.items() if cb.state == CircuitState.OPEN]
+        return {
+            "status": "degraded" if open_ids else "ok",
+            "total_monitored": len(breakers),
+            "circuit_open": len(open_ids),
+            "open_account_ids": open_ids,
         }
+    except Exception as exc:
+        return {"status": "unknown", "error": str(exc)}
+
+
+@router.get("", summary="详细健康检查")
+async def health_check():
+    """Returns 200 (healthy), 207 (degraded), or 503 (unhealthy)."""
+    db = await _check_database()
+    redis = await _check_redis()
+    exchange = await _check_exchange_accounts()
+
+    critical_ok = db["status"] == "ok" and redis["status"] == "ok"
+    fully_healthy = critical_ok and exchange.get("circuit_open", 0) == 0
+
+    if not critical_ok:
+        overall, http_status = "unhealthy", 503
+    elif not fully_healthy:
+        overall, http_status = "degraded", 207
+    else:
+        overall, http_status = "healthy", 200
+
+    return JSONResponse(
+        status_code=http_status,
+        content={
+            "code": 200,
+            "msg": "success",
+            "data": {
+                "status": overall,
+                "version": settings.VERSION,
+                "checks": {"database": db, "redis": redis, "exchange_accounts": exchange},
+            },
+        },
     )
 
 
 @router.get("/ready", summary="就绪检查")
 async def readiness_check():
-    """
-    就绪检查端点
-    检查应用是否准备好接收流量（包括数据库连接）
-    """
-    checks = {
-        "database": False,
-    }
-    
-    # 检查数据库连接
-    try:
-        conn = Tortoise.get_connection("mysql")
-        await conn.execute_query("SELECT 1")
-        checks["database"] = True
-    except Exception:
-        pass
-    
-    all_healthy = all(checks.values())
-    
-    return Success(
-        data={
-            "status": "ready" if all_healthy else "not_ready",
-            "checks": checks,
-        }
+    db = await _check_database()
+    code = 200 if db["status"] == "ok" else 503
+    return JSONResponse(
+        status_code=code,
+        content={"code": 200, "msg": "success", "data": {"database": db}},
     )
 
 
 @router.get("/live", summary="存活检查")
 async def liveness_check():
-    """
-    存活检查端点
-    仅检查应用进程是否存活
-    """
-    return Success(
-        data={
-            "status": "alive",
-        }
-    )
+    return {"code": 200, "msg": "success", "data": {"status": "alive"}}
