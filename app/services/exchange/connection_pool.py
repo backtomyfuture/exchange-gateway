@@ -22,8 +22,11 @@ from app.utils.exchange_adapter import LegacySSLAdapter
 
 from app.log import logger
 from app.models.exchange import ExchangeAccount
+from app.services.exchange.circuit_breaker import CircuitBreaker, CircuitOpenError
 from app.settings import settings
 from app.utils.crypto import get_crypto
+
+from exchangelib.errors import TransportError, ErrorTimeoutExpired
 
 
 # 禁用 SSL 警告
@@ -88,6 +91,8 @@ class ExchangeConnectionPool:
         self._warmup_status: dict[int, bool] = {}
         # 预热任务
         self._warmup_tasks: dict[int, asyncio.Task] = {}
+        # Per-account circuit breakers
+        self._circuit_breakers: dict[int, CircuitBreaker] = {}
 
     @property
     def crypto(self):
@@ -139,7 +144,25 @@ class ExchangeConnectionPool:
             logger.error(f"创建 Exchange 连接失败: {db_account.email}, 错误: {e}")
             raise
 
+    def _get_circuit_breaker(self, account_id: int) -> CircuitBreaker:
+        """Get or create per-account circuit breaker."""
+        if account_id not in self._circuit_breakers:
+            self._circuit_breakers[account_id] = CircuitBreaker(
+                failure_threshold=5,
+                recovery_timeout=60.0,
+            )
+        return self._circuit_breakers[account_id]
+
     async def get_connection(self, account_id: int) -> ExchangeConnection:
+        """Get a connection, protected by per-account circuit breaker."""
+        cb = self._get_circuit_breaker(account_id)
+        return await cb.call(
+            self._get_connection_inner,
+            account_id,
+            retryable_exceptions=(TransportError, ErrorTimeoutExpired, ConnectionError),
+        )
+
+    async def _get_connection_inner(self, account_id: int) -> ExchangeConnection:
         """
         Acquire a connection for *account_id*, preferring pool reuse.
 
@@ -355,6 +378,22 @@ class ExchangeConnectionPool:
                 logger.error(f"后台预热任务异常: {account_id}, {e}")
 
         self._warmup_tasks[account_id] = asyncio.create_task(warmup_task())
+
+    async def ping_all_accounts(self) -> dict:
+        """Proactively test all active Exchange accounts. Updates circuit breaker state."""
+        accounts = await ExchangeAccount.filter(is_active=True).all()
+        healthy, degraded, results = 0, 0, []
+        for account in accounts:
+            try:
+                async with get_exchange_connection(account.id) as conn:
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, lambda: conn.account.inbox.total_count)
+                healthy += 1
+                results.append({"id": account.id, "status": "healthy"})
+            except Exception as exc:
+                degraded += 1
+                results.append({"id": account.id, "status": "degraded", "error": str(exc)})
+        return {"healthy": healthy, "degraded": degraded, "accounts": results}
 
     def get_stats(self) -> dict:
         """获取连接池统计信息"""
