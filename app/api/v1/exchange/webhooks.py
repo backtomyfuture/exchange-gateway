@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from app.core.dependency import AuthControl, DependPermission
 from app.core.api_key_auth import OptionalApiKeyWebhook
 from app.models import User, ExchangeApiKey
+from app.models.webhook import WebhookDelivery
 from app.schemas.base import Success, Fail
 from app.schemas.webhook import WebhookCreate, WebhookUpdate, WebhookResponse
 from app.services.exchange.webhook_service import get_webhook_service
@@ -182,3 +183,42 @@ async def test_webhook(
         return Success(msg="测试请求发送成功", data=result.get("data"))
     else:
         return Fail(code=400, msg=result["message"])
+
+
+@router.get("/{webhook_id}/deliveries", summary="查看投递历史")
+async def list_webhook_deliveries(
+    webhook_id: int,
+    page: int = Query(1, description="页码"),
+    size: int = Query(20, description="每页数量"),
+    owner_id: int = Depends(get_current_actor),
+):
+    """List all delivery attempts for a webhook subscription."""
+    offset = (page - 1) * size
+    total = await WebhookDelivery.filter(subscription_id=webhook_id).count()
+    deliveries = await WebhookDelivery.filter(subscription_id=webhook_id) \
+        .order_by("-created_at").offset(offset).limit(size) \
+        .values("id", "event_type", "status", "attempt_count",
+                "last_error", "next_retry_at", "created_at")
+    return Success(data={"items": list(deliveries), "total": total, "page": page, "size": size})
+
+
+@router.post("/deliveries/{delivery_id}/retry", summary="手动重投递")
+async def retry_webhook_delivery(
+    delivery_id: int,
+    owner_id: int = Depends(get_current_actor),
+):
+    """Re-enqueue a dead or failed webhook delivery."""
+    from app.core.arq_pool import get_arq_pool
+    delivery = await WebhookDelivery.get_or_none(id=delivery_id)
+    if not delivery:
+        raise HTTPException(status_code=404, detail="Delivery not found")
+    if delivery.status not in ("dead", "failed"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Status is '{delivery.status}'; only dead/failed can be retried",
+        )
+    delivery.update_from_dict({"status": "pending", "attempt_count": 0, "last_error": None})
+    await delivery.save()
+    redis = get_arq_pool()
+    await redis.enqueue_job("deliver_webhook_task", delivery_id)
+    return Success(data={"delivery_id": delivery_id, "status": "re-enqueued"})
