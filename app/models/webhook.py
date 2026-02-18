@@ -38,3 +38,24 @@ class WebhookSubscription(BaseModel, TimestampMixin):
 
     class Meta:
         table = "webhook_subscription"
+
+
+class WebhookDelivery(BaseModel, TimestampMixin):
+    """Tracks a single webhook event delivery attempt.
+    Created when an Exchange event is received; updated on delivery/failure.
+    """
+    subscription: fields.ForeignKeyRelation["WebhookSubscription"] = fields.ForeignKeyField(
+        "models.WebhookSubscription",
+        related_name="deliveries",
+        on_delete=fields.CASCADE,
+    )
+    event_type = fields.CharField(max_length=100, description="事件类型")
+    payload = fields.JSONField(description="事件载荷")
+    status = fields.CharField(max_length=20, default="pending", description="状态", db_index=True)
+    # pending | delivered | failed | dead
+    attempt_count = fields.IntField(default=0, description="尝试次数")
+    last_error = fields.TextField(null=True, default=None, description="最后错误信息")
+    next_retry_at = fields.DatetimeField(null=True, default=None, description="下次重试时间")
+
+    class Meta:
+        table = "webhook_delivery"
