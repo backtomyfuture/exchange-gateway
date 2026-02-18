@@ -49,13 +49,16 @@ class RequestIDMiddleware(SimpleBaseMiddleware):
     为每个请求生成唯一标识，便于日志追踪和问题排查
     """
     async def before_request(self, request: Request):
+        import structlog
         # 优先使用客户端传入的 Request ID（如通过网关传入）
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
         CTX_REQUEST_ID.set(request_id)
         request.state.request_id = request_id
+        structlog.contextvars.bind_contextvars(request_id=request_id)
 
     async def after_request(self, request: Request):
-        pass
+        import structlog
+        structlog.contextvars.clear_contextvars()
 
 
 class BackGroundTaskMiddleware(SimpleBaseMiddleware):

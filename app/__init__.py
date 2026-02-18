@@ -38,6 +38,9 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    from app.core.logging import configure_logging
+    configure_logging()
+
     app = FastAPI(
         title=settings.APP_TITLE,
         description=settings.APP_DESCRIPTION,
