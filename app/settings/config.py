@@ -167,10 +167,11 @@ class Settings(BaseSettings):
         db_url = self.DATABASE_URL.lower()
         if db_url.startswith("postgres"):
             db_engine = "tortoise.backends.asyncpg"
-            db_conn_name = "postgres"
         else:
             db_engine = "tortoise.backends.mysql"
-            db_conn_name = "mysql"
+
+        # 统一使用 'default' 作为连接名，解决健康检查等各处引用不一致的问题
+        db_conn_name = "default"
 
         # 解析 URL 以满足有些驱动（如 MySQL）对独立参数的需求
         db_params = parse_database_url(self.DATABASE_URL)

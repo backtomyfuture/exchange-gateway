@@ -270,13 +270,26 @@ async def init_db():
 
     await Tortoise.init(config=settings.TORTOISE_ORM)
 
-    # 使用 Tortoise.generate_schemas() 直接从模型创建表
+    # 使用 Aerich 进行数据库迁移
     try:
-        await Tortoise.generate_schemas()
-        logger.info("Database schema generated successfully")
+        from aerich import Command
+        command = Command(tortoise_config=settings.TORTOISE_ORM, app="models")
+        await command.init()
+        await command.upgrade()
+        logger.info("Database migrations applied successfully")
     except Exception as e:
-        # 表可能已存在，尝试继续
-        logger.warning(f"Schema generation warning: {e}")
+        # 如果迁移失败，记录详细错误。
+        # 这里不建议直接 fallback 到 generate_schemas，因为如果数据库已有部分表，会产生 "already exists" 冲突
+        logger.error(f"Database migration failed: {e}")
+        
+        # 只有在明确知道是新数据库（例如报错说表不存在）时才尝试 generate_schemas
+        # 或者为了兼容性，保留 generate_schemas 但使用 safe=True 并记录警告而不是错误
+        try:
+            await Tortoise.generate_schemas(safe=True)
+            logger.info("Database schema sync completed (safe mode)")
+        except Exception as se:
+            logger.critical(f"Critical: Database initialization failed: {se}")
+            raise
 
 
 async def init_roles():

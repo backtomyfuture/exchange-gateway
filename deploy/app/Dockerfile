@@ -79,8 +79,9 @@ COPY app/ ./app/
 COPY scripts/ ./scripts/
 COPY deploy/app/entrypoint.sh .
 COPY deploy/app/entrypoint-worker.sh .
-RUN sed -i 's/\r$//' entrypoint.sh entrypoint-worker.sh && \
-    chmod +x entrypoint.sh entrypoint-worker.sh
+COPY deploy/app/entrypoint-arq.sh .
+RUN sed -i 's/\r$//' entrypoint.sh entrypoint-worker.sh entrypoint-arq.sh && \
+    chmod +x entrypoint.sh entrypoint-worker.sh entrypoint-arq.sh
 
 # 创建非 root 用户
 RUN useradd --create-home --shell /bin/bash appuser

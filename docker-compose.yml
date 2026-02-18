@@ -60,6 +60,7 @@ services:
       - EXCHANGE_ENCRYPTION_KEY=${EXCHANGE_ENCRYPTION_KEY}
       - WEBHOOK_ALLOW_PRIVATE_URLS=true
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - LOGS_ROOT=/var/log/app
     ports:
       - "18001:${BACKEND_PORT:-8000}"
     depends_on:
@@ -97,6 +98,7 @@ services:
       - EXCHANGE_ENCRYPTION_KEY=${EXCHANGE_ENCRYPTION_KEY}
       - WEBHOOK_ALLOW_PRIVATE_URLS=true
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - LOGS_ROOT=/var/log/app
     depends_on:
       mysql:
         condition: service_healthy
@@ -106,6 +108,8 @@ services:
       - ./app:/opt/app/app:ro
       - ./migrations:/opt/app/migrations
       - ./.docker-data/logs:/var/log/app
+    healthcheck:
+      disable: true
     networks:
       - backend
 
@@ -119,13 +123,19 @@ services:
     image: exchange-app:latest
     container_name: exchange-gateway-arq-worker
     restart: unless-stopped
-    command: python -m arq app.tasks.worker.WorkerSettings
+    entrypoint: ["/opt/app/entrypoint-arq.sh"]
+    command: []
     environment:
       - ENV=${ENV:-dev}
       - DATABASE_URL=${DATABASE_URL:-mysql://root:root123@mysql:3306/exchange_gateway}
       - SECRET_KEY=${SECRET_KEY}
       - EXCHANGE_ENCRYPTION_KEY=${EXCHANGE_ENCRYPTION_KEY}
+      - EXCHANGE_SERVER=${EXCHANGE_SERVER}
+      - EXCHANGE_DOMAIN=${EXCHANGE_DOMAIN}
+      - EXCHANGE_EMAIL_SUFFIX=${EXCHANGE_EMAIL_SUFFIX}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - LOGS_ROOT=/var/log/app
+      - LOGS_ROOT=/var/log/app
     depends_on:
       mysql:
         condition: service_healthy
@@ -134,6 +144,8 @@ services:
     volumes:
       - ./app:/opt/app/app:ro
       - ./.docker-data/logs:/var/log/app
+    healthcheck:
+      disable: true
     networks:
       - backend
 

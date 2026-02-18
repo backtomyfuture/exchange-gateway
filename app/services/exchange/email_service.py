@@ -1205,6 +1205,6 @@ async def recover_pending_emails():
                 })
                 await log.save()
                 failed += 1
-        logger.info("Email recovery: %d re-enqueued, %d marked failed", recovered, failed)
-    except Exception as e:
-        logger.error("Email recovery failed: %s", e)
+        logger.info("Email recovery: {} re-enqueued, {} marked failed", recovered, failed)
+    except Exception:
+        logger.exception("Email recovery failed")

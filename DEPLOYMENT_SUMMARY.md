@@ -2,8 +2,8 @@
 
 ## 部署信息
 
-**部署时间**: 2026-02-18 13:12:00
-**部署状态**: ✅ 成功
+**部署时间**: 2026-02-18 17:05:00
+**部署状态**: ✅ 成功 (修复缺失依赖与 Worker 启动配置)
 **环境**: 开发模式 (dev)
 
 ## 配置信息
@@ -20,9 +20,11 @@ ENV=dev
 | 容器名称 | 镜像 | 状态 | 端口映射 |
 |---------|------|------|---------|
 | exchange-gateway-mysql | mysql:8.0 | ✅ Running (Healthy) | 13306:3306 |
-| exchange-gateway-app | exchange-app:latest | ✅ Running | 18001:8000 |
-| exchange-gateway-nginx | exchange-gateway-nginx | ✅ Running | 80:8080 |
+| exchange-gateway-redis | redis:7-alpine | ✅ Running (Healthy) | 6379 (内部) |
+| exchange-gateway-app | exchange-app:latest | ✅ Running (Healthy) | 18001:8000 |
+| exchange-gateway-nginx | exchange-gateway-nginx | ✅ Running (Healthy) | 80:8080 |
 | exchange-gateway-webhook-worker | exchange-app:latest | ✅ Running | 8000 (内部) |
+| exchange-gateway-arq-worker | exchange-app:latest | ✅ Running | 8000 (内部) |
 
 ## 访问信息
 

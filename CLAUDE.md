@@ -15,10 +15,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | Component | Technology |
 |-----------|-----------|
-| Backend | Python 3.11+, FastAPI, Tortoise ORM, exchangelib |
+| Backend | Python 3.11+, FastAPI, Tortoise ORM, exchangelib, arq |
 | Frontend | Vue 3, Vite, Naive UI, Pinia |
-| Database | MySQL 8.0 |
-| Deployment | Docker, Nginx |
+| Database | MySQL 8.0, Redis (for Task Queue & Rate Limiting) |
+| Deployment | Docker, Nginx, Prometheus (Monitoring) |
 
 ## Development Commands
 
@@ -158,6 +158,21 @@ FastAPI Application
    - Service: `app/services/exchange/template_service.py`
    - Supports variables like `{{recipient_name}}`
 
+7. **Task Queue (ARQ)**: Asynchronous job processing using Redis
+   - Worker: `app/tasks/worker.py` (runs as `arq-worker` container)
+   - Used for: Sending emails, delivering webhooks, periodic sync tasks
+   - Pool management: `app/core/arq_pool.py`
+
+8. **Structured Logging**: Production-ready logging with context injection
+   - Location: `app/core/logging.py`
+   - Uses `structlog` for JSON output in prod and colored output in dev
+   - Automatically injects `request_id` context
+
+9. **Monitoring**: Prometheus instrumentation
+   - Location: `app/core/metrics.py`
+   - Exposes `/metrics` endpoint for Prometheus scraping
+   - Tracks email success/failure, latency, and circuit breaker states
+
 ### Directory Organization
 
 ```
@@ -296,10 +311,13 @@ WORKERS=2
 ## Docker Compose Services
 
 - **mysql**: MySQL 8.0 database
-- **app**: FastAPI application (port 18001)
-- **webhook-worker**: Webhook listener process (background)
+- **app**: FastAPI application (port 18001, uses `entrypoint.sh`)
+- **webhook-worker**: Webhook listener (uses `entrypoint-worker.sh`)
+- **arq-worker**: Redis task queue worker (uses `entrypoint-arq.sh`)
 - **nginx**: Reverse proxy (port 80)
-- **redis**: (optional, for rate limiting)
+- **redis**: Redis 7-alpine (for ARQ and rate limiting)
+
+*Note: Worker services have HTTP health checks disabled as they are background processes.*
 
 Access URLs (dev mode):
 - Admin Dashboard: `http://localhost`

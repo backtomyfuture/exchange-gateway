@@ -77,6 +77,16 @@ tenacity==8.2.3
 # Redis for distributed rate limiting
 redis==5.2.1
 
+# ARQ - Redis task queue (used for async email/webhook tasks)
+arq==0.26.1
+
+# Structured logging
+structlog==24.4.0
+
+# Prometheus metrics
+prometheus-client==0.21.1
+prometheus-fastapi-instrumentator==7.0.0
+
 # Testing
 pytest==8.3.4
 pytest-asyncio==0.24.0
