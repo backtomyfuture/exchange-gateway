@@ -110,6 +110,34 @@ services:
       - backend
 
   # ===========================================
+  # ARQ Task Queue Worker
+  # ===========================================
+  arq-worker:
+    build:
+      context: .
+      dockerfile: deploy/app/Dockerfile
+    image: exchange-app:latest
+    container_name: exchange-gateway-arq-worker
+    restart: unless-stopped
+    command: python -m arq app.tasks.worker.WorkerSettings
+    environment:
+      - ENV=${ENV:-dev}
+      - DATABASE_URL=${DATABASE_URL:-mysql://root:root123@mysql:3306/exchange_gateway}
+      - SECRET_KEY=${SECRET_KEY}
+      - EXCHANGE_ENCRYPTION_KEY=${EXCHANGE_ENCRYPTION_KEY}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/opt/app/app:ro
+      - ./.docker-data/logs:/var/log/app
+    networks:
+      - backend
+
+  # ===========================================
   # Redis (Task Queue + Rate Limiting)
   # ===========================================
   redis:
