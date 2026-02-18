@@ -65,6 +65,8 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - ./app:/opt/app/app:ro
       - ./.docker-data/logs:/var/log/app
@@ -108,19 +110,19 @@ services:
       - backend
 
   # ===========================================
-  # Redis (Used for Rate Limiting)
+  # Redis (Task Queue + Rate Limiting)
   # ===========================================
-  # redis:
-  #   image: redis:7-alpine
-  #   container_name: exchange-gateway-redis
-  #   restart: unless-stopped
-  #   healthcheck:
-  #     test: ["CMD", "redis-cli", "ping"]
-  #     interval: 5s
-  #     timeout: 3s
-  #     retries: 5
-  #   networks:
-  #     - backend
+  redis:
+    image: redis:7-alpine
+    container_name: exchange-gateway-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
 
   # ===========================================
   # Nginx Reverse Proxy
