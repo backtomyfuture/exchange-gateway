@@ -28,8 +28,9 @@ logging.basicConfig(
 logger = logging.getLogger("webhook-worker")
 
 from app.settings import settings
+from app.core.arq_pool import get_arq_pool
 from app.models.exchange import ExchangeAccount
-from app.models.webhook import WebhookSubscription
+from app.models.webhook import WebhookDelivery, WebhookSubscription
 
 from exchangelib.protocol import BaseProtocol
 from app.utils.exchange_adapter import LegacySSLAdapter
@@ -170,17 +171,28 @@ class WebhookDispatcher:
             return response
 
     async def dispatch(self, webhook: WebhookSubscription, event_data: dict):
+        """Persist the event and enqueue an ARQ delivery job.
+        No longer fires HTTP directly — the ARQ worker handles delivery.
         """
-        分发事件到 Webhook（带断路器保护）
-        """
-        circuit_breaker = self._get_circuit_breaker(webhook.url)
-
+        event_type = event_data.get("event_type", "UnknownEvent")
         try:
-            await circuit_breaker.call(self._do_dispatch, webhook, event_data)
-        except CircuitBreakerOpen:
-            logger.warning(f"Webhook 断路器开启，跳过请求: {webhook.url}")
-        except Exception as e:
-            logger.error(f"Webhook dispatch error: {webhook.url} - {e}")
+            delivery = await WebhookDelivery.create(
+                subscription_id=webhook.id,
+                event_type=event_type,
+                payload=event_data,
+                status="pending",
+            )
+            redis = get_arq_pool()
+            await redis.enqueue_job("deliver_webhook_task", delivery.id)
+            logger.info(
+                "Webhook dispatch: created delivery %d for subscription %d event %s",
+                delivery.id, webhook.id, event_type,
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to enqueue webhook delivery for subscription %d: %s",
+                webhook.id, exc,
+            )
 
     async def _do_dispatch(self, webhook: WebhookSubscription, event_data: dict):
         """实际执行分发"""
@@ -492,11 +504,17 @@ class WebhookManager:
         "freebusychangedevent": "FreeBusyChangedEvent",
     }
     DEFAULT_EVENT_WHITELIST = ["NewMailEvent"]
+    _instance: Optional["WebhookManager"] = None
 
     def __init__(self):
+        WebhookManager._instance = self
         self.listeners: Dict[int, AsyncAccountListener] = {}
         self.account_subscriptions: Dict[int, List[WebhookSubscription]] = {}
         self.dispatcher = WebhookDispatcher()
+
+    @classmethod
+    def get_instance(cls) -> Optional["WebhookManager"]:
+        return cls._instance
 
     @classmethod
     def _normalize_event_name(cls, event_name: str) -> Optional[str]:
