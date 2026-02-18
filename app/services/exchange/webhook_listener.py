@@ -345,38 +345,60 @@ class AsyncAccountListener:
 
     async def _stream_events(self, account):
         """
-        异步包装同步的流式事件
-        """
-        loop = asyncio.get_event_loop()
+        Wrap the synchronous EWS streaming subscription as an async generator.
 
-        def iterate_events():
-            """在线程中迭代事件（生成器）"""
+        Threading note: Python generators are NOT thread-safe.  The previous
+        implementation called ``next(iterator)`` from a *new* thread on every
+        iteration via ``asyncio.to_thread``, which created a data race because
+        the generator's frame was being resumed from different OS threads.
+
+        The correct pattern is to run the *entire* blocking iteration inside a
+        single ``asyncio.to_thread`` call and push each event onto an
+        ``asyncio.Queue`` from that one thread.  The async generator then
+        drains the queue on the event-loop side.
+        """
+        event_buffer: asyncio.Queue = asyncio.Queue()
+        _SENTINEL = object()
+
+        def _run_blocking_stream():
+            """Runs entirely in one thread – no cross-thread generator access."""
+            loop = asyncio.get_event_loop()
             try:
                 with account.streaming_subscription(event_types=self.event_types) as subscription_id:
                     for notification in account.inbox.get_streaming_events(
                         subscription_id_or_ids=subscription_id,
                         connection_timeout=settings.EXCHANGE_STREAM_CONNECTION_TIMEOUT_MINUTES,
                     ):
+                        if self._stop_event.is_set():
+                            break
                         for event in getattr(notification, "events", []) or []:
-                            yield event
+                            # put_nowait is safe here because Queue has no maxsize limit
+                            asyncio.run_coroutine_threadsafe(
+                                event_buffer.put(event), loop
+                            ).result()
             except Exception as e:
                 logger.error(f"[{self.account_id}] Streaming error: {e}")
                 raise
+            finally:
+                asyncio.run_coroutine_threadsafe(
+                    event_buffer.put(_SENTINEL), loop
+                ).result()
 
-        # 使用 to_thread 每次获取一个事件
-        iterator = iterate_events()
-        while True:
-            try:
-                # 在线程中调用 next()，避免阻塞事件循环
-                event = await asyncio.to_thread(lambda: next(iterator, None))
-                if event is None:
+        loop = asyncio.get_event_loop()
+        stream_future = asyncio.get_event_loop().run_in_executor(None, _run_blocking_stream)
+
+        try:
+            while True:
+                item = await event_buffer.get()
+                if item is _SENTINEL:
                     break
-                yield event
-            except StopIteration:
-                break
-            except Exception as e:
-                logger.error(f"[{self.account_id}] Event iteration error: {e}")
-                raise
+                yield item
+        finally:
+            # Ensure the background thread is awaited even if the consumer exits early
+            try:
+                await stream_future
+            except Exception:
+                pass
 
     def _process_event(self, event) -> Optional[dict]:
         """处理单个事件"""

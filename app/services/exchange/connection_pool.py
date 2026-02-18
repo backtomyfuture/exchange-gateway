@@ -141,43 +141,63 @@ class ExchangeConnectionPool:
 
     async def get_connection(self, account_id: int) -> ExchangeConnection:
         """
-        获取连接（优先复用现有连接）
+        Acquire a connection for *account_id*, preferring pool reuse.
+
+        Design note – avoid holding the global lock during async I/O:
+        The lock is only held long enough to inspect pool state and
+        optimistically mark a candidate as in-use.  All actual network I/O
+        (health-check, EWS Account creation) happens *outside* the lock so
+        concurrent requests for different accounts are never serialised.
         """
+        # ── Step 1: look for an idle, non-expired connection ──────────────
+        candidate: Optional[ExchangeConnection] = None
         async with self._lock:
-            # 检查是否有可用连接
             if account_id in self._pools:
                 pool = self._pools[account_id]
-                for conn in pool:
-                    # check if connection is in use
-                    if conn.in_use:
-                        continue
-
-                    # is_healthy 现在是异步的
-                    if not conn.is_expired(self._max_age) and await conn.is_healthy():
-                        conn.touch()
-                        conn.in_use = True
-                        return conn
-                # 清理过期连接
+                # Purge expired entries while we hold the lock
                 self._pools[account_id] = [c for c in pool if not c.is_expired(self._max_age)]
+                for conn in self._pools[account_id]:
+                    if not conn.in_use:
+                        # Optimistically reserve so no other coroutine steals it
+                        conn.in_use = True
+                        candidate = conn
+                        break
 
-            # 创建新连接
-            db_account = await ExchangeAccount.filter(id=account_id).first()
-            if not db_account:
-                raise ValueError(f"账户不存在: {account_id}")
-            if not db_account.is_active:
-                raise ValueError(f"账户已禁用: {db_account.email}")
+        # ── Step 2: validate the candidate *outside* the lock ─────────────
+        if candidate is not None:
+            if await candidate.is_healthy():
+                candidate.touch()
+                return candidate
+            # Unhealthy – remove from pool and fall through to create a new one
+            candidate.in_use = False
+            async with self._lock:
+                if account_id in self._pools:
+                    self._pools[account_id] = [
+                        c for c in self._pools[account_id] if c is not candidate
+                    ]
+                ExchangeConnectionPool._total_connections = max(
+                    0, ExchangeConnectionPool._total_connections - 1
+                )
 
-            conn = await self._create_connection(db_account)
+        # ── Step 3: create a new connection (DB + EWS I/O, no lock held) ──
+        db_account = await ExchangeAccount.filter(id=account_id).first()
+        if not db_account:
+            raise ValueError(f"Account not found: {account_id}")
+        if not db_account.is_active:
+            raise ValueError(f"Account is disabled: {db_account.email}")
 
-            conn.in_use = True
+        new_conn = await self._create_connection(db_account)
+        new_conn.in_use = True
 
-            # 添加到连接池
+        # ── Step 4: register connection in the pool ───────────────────────
+        async with self._lock:
             if account_id not in self._pools:
                 self._pools[account_id] = []
             if len(self._pools[account_id]) < self._max_per_account:
-                self._pools[account_id].append(conn)
+                self._pools[account_id].append(new_conn)
+            ExchangeConnectionPool._total_connections += 1
 
-            return conn
+        return new_conn
 
     async def release_connection(self, conn: ExchangeConnection):
         """
@@ -196,15 +216,17 @@ class ExchangeConnectionPool:
                 logger.info(f"已关闭账户 {account_id} 的所有连接")
 
     async def cleanup_expired(self):
-        """
-        清理所有过期连接
-        """
+        """Remove all expired connections and update the global counter."""
         async with self._lock:
             for account_id in list(self._pools.keys()):
-                old_len = len(self._pools[account_id])
-                self._pools[account_id] = [c for c in self._pools[account_id] if not c.is_expired(self._max_age)]
-                ExchangeConnectionPool._total_connections -= old_len - len(self._pools[account_id])
-
+                before = len(self._pools[account_id])
+                self._pools[account_id] = [
+                    c for c in self._pools[account_id] if not c.is_expired(self._max_age)
+                ]
+                removed = before - len(self._pools[account_id])
+                ExchangeConnectionPool._total_connections = max(
+                    0, ExchangeConnectionPool._total_connections - removed
+                )
                 if not self._pools[account_id]:
                     del self._pools[account_id]
 
