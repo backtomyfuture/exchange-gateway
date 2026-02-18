@@ -57,6 +57,7 @@ class Menu(BaseModel, TimestampMixin):
 
     class Meta:
         table = "menu"
+        unique_together = (("parent_id", "name"), )
 
 
 class Dept(BaseModel, TimestampMixin):

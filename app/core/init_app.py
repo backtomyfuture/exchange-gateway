@@ -103,19 +103,19 @@ async def init_menus():
     from tortoise.exceptions import MultipleObjectsReturned
 
     async def get_or_create_catalog(name: str, path: str, order: int, icon: str, redirect: str):
-        """获取或创建目录，如果存在多个则删除多余的"""
+        """获取或创建目录，支持多 worker 并发，并强制更新排序等字段"""
         try:
+            # 尝试通过唯一标识符获取
             catalog = await Menu.get(name=name, parent_id=0)
-        except MultipleObjectsReturned:
-            duplicates = await Menu.filter(name=name, parent_id=0).all()
-            for dup in duplicates[1:]:
-                await dup.delete()
-            catalog = await Menu.get(name=name, parent_id=0)
+            # 如果存在，则更新排序等字段，确保与代码一致
+            catalog.order = order
+            catalog.path = path
+            catalog.icon = icon
+            catalog.redirect = redirect
+            await catalog.save()
         except Exception:
-            catalog = None
-
-        if not catalog:
             try:
+                # 即使 check 发现不存在，create 时也可能因为并发而报错，所以要有 try-except
                 catalog = await Menu.create(
                     menu_type=MenuType.CATALOG,
                     name=name,
@@ -129,7 +129,10 @@ async def init_menus():
                     redirect=redirect,
                 )
             except IntegrityError:
+                # 再次尝试获取并更新
                 catalog = await Menu.get(name=name, parent_id=0)
+                catalog.order = order
+                await catalog.save()
         return catalog
 
     # 1. 邮件服务
@@ -144,21 +147,25 @@ async def init_menus():
     exchange_children = [
         {"name": "账户管理", "path": "accounts", "component": "/exchange/accounts", "icon": "material-symbols:contact-mail-outline", "order": 1},
         {"name": "API密钥", "path": "keys", "component": "/exchange/keys", "icon": "material-symbols:key-outline", "order": 2},
-        {"name": "Webhook订阅", "path": "webhooks", "component": "/exchange/webhooks", "icon": "mdi:webhook", "order": 3},
+        {"name": "Webhook 订阅", "path": "webhooks", "component": "/exchange/webhooks", "icon": "mdi:webhook", "order": 3},
         {"name": "邮件模板", "path": "templates", "component": "/exchange/templates", "icon": "material-symbols:article-outline", "order": 4},
         {"name": "操作日志", "path": "logs", "component": "/exchange/logs", "icon": "material-symbols:history", "order": 5},
         {"name": "使用统计", "path": "stats", "component": "/exchange/stats", "icon": "material-symbols:analytics-outline", "order": 6},
     ]
 
     for child in exchange_children:
-        # 检查并去重子菜单
-        child_menus = await Menu.filter(name=child["name"], parent_id=exchange_menu.id).all()
-        if len(child_menus) > 1:
-            for dup in child_menus[1:]:
-                await dup.delete()
-        
-        if not child_menus:
+        try:
+            # 直接通过名称寻找
+            child_menu = await Menu.get(name=child["name"], parent_id=exchange_menu.id)
+            # 强制同步排序、组件等信息
+            child_menu.order = child["order"]
+            child_menu.path = child["path"]
+            child_menu.component = child["component"]
+            child_menu.icon = child["icon"]
+            await child_menu.save()
+        except Exception:
             try:
+                # 并发执行时，此处仍可能报错 IntegrityError
                 await Menu.create(
                     menu_type=MenuType.MENU,
                     name=child["name"],
@@ -192,13 +199,17 @@ async def init_menus():
     ]
 
     for child in system_children:
-        child_menus = await Menu.filter(name=child["name"], parent_id=system_menu.id).all()
-        if len(child_menus) > 1:
-            for dup in child_menus[1:]:
-                await dup.delete()
-        
-        if not child_menus:
+        try:
+            # 直接通过名称寻找
+            child_menu = await Menu.get(name=child["name"], parent_id=system_menu.id)
+            # 强制同步排序、组件等信息
+            child_menu.order = child["order"]
+            child_menu.component = child["component"]
+            child_menu.icon = child["icon"]
+            await child_menu.save()
+        except Exception:
             try:
+                # 并发执行时，此处仍可能报错 IntegrityError
                 await Menu.create(
                     menu_type=MenuType.MENU,
                     name=child["name"],
@@ -227,13 +238,17 @@ async def init_menus():
     ]
 
     for child in dev_children:
-        child_menus = await Menu.filter(name=child["name"], parent_id=dev_menu.id).all()
-        if len(child_menus) > 1:
-            for dup in child_menus[1:]:
-                await dup.delete()
-        
-        if not child_menus:
+        try:
+            # 直接通过名称寻找
+            child_menu = await Menu.get(name=child["name"], parent_id=dev_menu.id)
+            # 强制同步排序、组件等信息
+            child_menu.order = child["order"]
+            child_menu.component = child["component"]
+            child_menu.icon = child["icon"]
+            await child_menu.save()
+        except Exception:
             try:
+                # 并发执行时，此处仍可能报错 IntegrityError
                 await Menu.create(
                     menu_type=MenuType.MENU,
                     name=child["name"],
@@ -278,18 +293,19 @@ async def init_db():
         await command.upgrade()
         logger.info("Database migrations applied successfully")
     except Exception as e:
-        # 如果迁移失败，记录详细错误。
-        # 这里不建议直接 fallback 到 generate_schemas，因为如果数据库已有部分表，会产生 "already exists" 冲突
-        logger.error(f"Database migration failed: {e}")
-        
-        # 只有在明确知道是新数据库（例如报错说表不存在）时才尝试 generate_schemas
-        # 或者为了兼容性，保留 generate_schemas 但使用 safe=True 并记录警告而不是错误
-        try:
-            await Tortoise.generate_schemas(safe=True)
-            logger.info("Database schema sync completed (safe mode)")
-        except Exception as se:
-            logger.critical(f"Critical: Database initialization failed: {se}")
-            raise
+        # 如果迁移失败，可能是表不存在或者是并发导致的 Duplicate 报错
+        # 这里的异常在多 Worker 下非常普遍，如果报错是 Duplicate key 相关的，通常可以忽略
+        if "Duplicate key" in str(e) or "already exists" in str(e):
+            logger.info(f"Database migration already processed: {e}")
+        else:
+            logger.error(f"Database migration failed: {e}")
+            # 只有在明确知道是新数据库（例如报错说表不存在）时才尝试 generate_schemas
+            try:
+                await Tortoise.generate_schemas(safe=True)
+                logger.info("Database schema sync completed (safe mode)")
+            except Exception as se:
+                logger.critical(f"Critical: Database initialization failed: {se}")
+                raise
 
 
 async def init_roles():

@@ -127,17 +127,27 @@ async def run_migration():
     await Tortoise.init(config=tortoise_config)
     print("  - Tortoise ORM initialized")
 
-    # 生成架构（创建所有表）
-    print("Generating database schema...")
+    # 执行迁移（使用 Aerich）
+    print("Applying database migrations via Aerich...")
     try:
-        await Tortoise.generate_schemas()
-        print("  - Schema generated successfully")
+        from aerich import Command
+        command = Command(tortoise_config=tortoise_config, app="models")
+        await command.init()
+        await command.upgrade()
+        print("  - Database migrations applied successfully")
     except Exception as e:
-        print(f"  - Schema generation warning: {e}")
+        print(f"  - Migration failed or unnecessary: {e}")
+        # 只有在非常极端的情况下才回退到 generate_schemas
+        print("Falling back to schema sync (safe mode)...")
+        try:
+            await Tortoise.generate_schemas(safe=True)
+            print("  - Schema sync completed")
+        except Exception as se:
+            print(f"  - Schema sync failed: {se}")
 
     print()
     print("=" * 50)
-    print("Database migration completed!")
+    print("Database initialization completed!")
     print("=" * 50)
 
     # 关闭连接
