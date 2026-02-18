@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from tortoise import Tortoise
 
+from app.core.arq_pool import close_arq_pool, init_arq_pool
 from app.core.exceptions import SettingNotFound
 from app.core.init_app import (
     init_data,
@@ -20,6 +21,7 @@ except ImportError:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_data()
+    await init_arq_pool()
 
     # 恢复未完成的邮件发送任务
     try:
@@ -29,11 +31,9 @@ async def lifespan(app: FastAPI):
         import logging
         logging.getLogger(__name__).warning(f"邮件任务恢复失败: {e}")
 
-
-    
-
     yield
 
+    await close_arq_pool()
     await Tortoise.close_connections()
 
 
