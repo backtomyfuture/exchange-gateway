@@ -202,6 +202,49 @@ class EmailService:
                 "message": f"创建草稿失败: {str(e)}",
             }
 
+    async def _execute_send(self, account_id: int, request: EmailSendRequest) -> None:
+        """Execute a single EWS send attempt. Raises on any failure.
+        Called by the ARQ send_email_task. No retry logic here — ARQ handles retries.
+        """
+        async with get_exchange_connection(account_id) as conn:
+            def send_ops():
+                inline_attachments = []
+                if request.body_type == "html":
+                    from .format_utils import process_inline_images
+                    processed_body, inline_attachments = process_inline_images(request.body)
+                    body = HTMLBody(processed_body)
+                else:
+                    body = request.body
+
+                message = Message(
+                    account=conn.account,
+                    subject=request.subject,
+                    body=body,
+                    to_recipients=request.to or [],
+                    cc_recipients=request.cc or [],
+                    bcc_recipients=request.bcc or [],
+                )
+                if request.attachments:
+                    for att in request.attachments:
+                        content = base64.b64decode(att.content)
+                        message.attach(FileAttachment(
+                            name=att.filename,
+                            content=content,
+                            content_type=att.content_type,
+                        ))
+                for att_data in inline_attachments:
+                    message.attach(FileAttachment(
+                        name=att_data["filename"],
+                        content=base64.b64decode(att_data["content"]),
+                        content_type=att_data["content_type"],
+                        content_id=att_data["content_id"],
+                        is_inline=True,
+                    ))
+                message.send(save_copy=request.save_to_sent)
+
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, send_ops)
+
     async def _send_email_bg_task(self, log_id: int, request: EmailSendRequest):
         """
         Background task that executes the actual EWS send with up to 3 retries.

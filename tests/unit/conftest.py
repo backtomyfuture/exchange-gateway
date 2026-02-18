@@ -1,7 +1,3 @@
 
-import pytest
-
-# Override init_test_db to do nothing
-@pytest.fixture(scope="session", autouse=True)
-async def init_test_db():
-    yield
+# Unit tests use the shared init_test_db fixture from tests/conftest.py
+# (SQLite in-memory DB initialized once per session)
