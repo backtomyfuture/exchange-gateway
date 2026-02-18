@@ -1,6 +1,5 @@
 """
-邮件服务
-提供邮件发送、接收、搜索等核心功能
+Email service – core send, receive, search and sync operations via exchangelib.
 """
 import base64
 import asyncio
@@ -11,11 +10,11 @@ from typing import Optional
 import re
 
 from exchangelib import (
+    UTC,
     FileAttachment,
     HTMLBody,
     Message,
 )
-from exchangelib.items import SEND_AND_SAVE_COPY, SEND_ONLY
 
 from app.log import logger
 import binascii
@@ -34,6 +33,28 @@ from app.schemas.exchange import (
 )
 
 from .connection_pool import get_exchange_connection
+
+
+def _resolve_folder(account, folder_name: str):
+    """
+    Resolve a folder name to an exchangelib Folder object.
+
+    Recognises the common well-known names (case-insensitive) and falls back
+    to a path lookup under the inbox for custom folder names.
+    """
+    name_upper = folder_name.upper()
+    if name_upper == "INBOX":
+        return account.inbox
+    if name_upper == "SENT":
+        return account.sent
+    if name_upper == "DRAFTS":
+        return account.drafts
+    if name_upper in ("TRASH", "DELETED", "DELETEDITEMS"):
+        return account.trash
+    if name_upper in ("JUNK", "SPAM", "JUNKEMAIL"):
+        return account.junk
+    # Arbitrary custom folder – look up relative to inbox
+    return account.inbox / folder_name
 
 
 class EmailService:
@@ -56,21 +77,9 @@ class EmailService:
         3. 立即返回日志ID
         """
         request_id = str(uuid.uuid4())[:8]
-        
-        try:
-            # 准备附件数据
-            attachments_payload = None
-            if request.attachments:
-                attachments_payload = [
-                    {
-                        "filename": att.filename,
-                        "content": att.content,
-                        "content_type": att.content_type
-                    }
-                    for att in request.attachments
-                ]
 
-            # 1. 创建日志记录
+        try:
+            # 1. Create audit log entry (pending state – updated after send completes)
             log_entry = await ExchangeMailLog.create(
                 api_key_id=api_key_id,
                 account_id=request.account_id,
@@ -83,9 +92,6 @@ class EmailService:
                 status="pending",
                 request_ip=request_ip,
                 request_id=request_id,
-                body=request.body,
-                body_type=request.body_type,
-                attachments_payload=attachments_payload,
             )
             
             # 2. 添加后台任务
@@ -172,7 +178,6 @@ class EmailService:
                 loop = asyncio.get_running_loop()
                 item_id, changekey = await loop.run_in_executor(None, draft_ops)
                 
-                # 记录日志
                 await ExchangeMailLog.create(
                     api_key_id=api_key_id,
                     account_id=request.account_id,
@@ -197,35 +202,22 @@ class EmailService:
                 "message": f"创建草稿失败: {str(e)}",
             }
 
-    async def _send_email_bg_task(self, log_id: int, request: Optional[EmailSendRequest] = None):
+    async def _send_email_bg_task(self, log_id: int, request: EmailSendRequest):
         """
-        后台发送邮件任务（包含重试逻辑）
-        """
-        """
-        后台发送邮件任务（包含重试逻辑）
+        Background task that executes the actual EWS send with up to 3 retries.
+
+        Transient network errors (TransportError, ErrorTimeoutExpired) are retried
+        with linear back-off.  All other errors are considered non-retryable.
         """
         from exchangelib.errors import TransportError, ErrorTimeoutExpired
-        from app.schemas.exchange import EmailAttachment
-        
+
         max_retries = 3
-        retry_delay = 2  # seconds
-        
+        retry_delay = 2  # seconds between attempts
+
         log_entry = await ExchangeMailLog.get_or_none(id=log_id)
         if not log_entry:
-            logger.error(f"未找到邮件日志: {log_id}")
+            logger.error(f"Mail log not found: {log_id}")
             return
-
-        # 如果未提供 request，从 log_entry 恢复数据
-        if not request:
-            logger.error(f"无法从数据库恢复邮件 (LogID: {log_id}): 数据库不再存储邮件内容")
-            log_entry.status = "failed"
-            log_entry.error_message = "无法恢复：数据库不再存储邮件内容"
-            await log_entry.save()
-            return
-
-        # 兼容旧代码逻辑（以下代码实际上不会执行，因为 request 不存在时已返回）
-        # attachments = [] 
-        # ...    )
 
         for attempt in range(1, max_retries + 1):
             try:
@@ -328,18 +320,7 @@ class EmailService:
             async with get_exchange_connection(request.account_id) as conn:
                 def list_ops():
                     try:
-                        # 获取文件夹
-                        if request.folder.upper() == "INBOX":
-                            folder = conn.account.inbox
-                        elif request.folder.upper() == "SENT":
-                            folder = conn.account.sent
-                        elif request.folder.upper() == "DRAFTS":
-                            folder = conn.account.drafts
-                        elif request.folder.upper() == "TRASH":
-                            folder = conn.account.trash
-                        else:
-                            # 尝试按名称查找
-                            folder = conn.account.inbox / request.folder
+                        folder = _resolve_folder(conn.account, request.folder)
                         
                         # 构建查询
                         if request.unread_only:
@@ -412,16 +393,18 @@ class EmailService:
         self,
         account_id: int,
         email_id: str,
+        folder: str = "INBOX",
         api_key_id: Optional[int] = None,
     ) -> dict:
         """
-        获取邮件详情
+        Retrieve full email details including body, attachments and inline images.
+        Supports any folder, not just INBOX.
         """
         try:
             async with get_exchange_connection(account_id) as conn:
                 def get_ops():
-                    # 根据 ID 查找邮件
-                    item = conn.account.inbox.get(id=email_id)
+                    target_folder = _resolve_folder(conn.account, folder)
+                    item = target_folder.get(id=email_id)
                     
                     if not item:
                         return None
@@ -597,19 +580,16 @@ class EmailService:
                 loop = asyncio.get_running_loop()
                 await loop.run_in_executor(None, reply_ops)
 
-                # 记录日志
                 await ExchangeMailLog.create(
                     api_key_id=api_key_id,
                     account_id=request.account_id,
                     action="reply",
                     recipients=request.to,
-                    cc_recipients=request.cc, 
-                    subject=request.subject, 
+                    cc_recipients=request.cc,
+                    subject=request.subject,
                     has_attachments=bool(request.attachments),
                     status="success",
                     request_ip=request_ip,
-                    body=request.body, 
-                    body_type=request.body_type,
                 )
 
                 return {"success": True, "message": "回复已发送"}
@@ -690,7 +670,6 @@ class EmailService:
                 loop = asyncio.get_running_loop()
                 await loop.run_in_executor(None, forward_ops)
 
-                # 记录日志
                 await ExchangeMailLog.create(
                     api_key_id=api_key_id,
                     account_id=request.account_id,
@@ -701,8 +680,6 @@ class EmailService:
                     has_attachments=bool(request.attachments),
                     status="success",
                     request_ip=request_ip,
-                    body=request.body,
-                    body_type=request.body_type,
                 )
 
                 return {"success": True, "message": "转发已发送"}
@@ -715,16 +692,18 @@ class EmailService:
         self,
         account_id: int,
         email_id: str,
+        folder: str = "INBOX",
         api_key_id: Optional[int] = None,
         request_ip: Optional[str] = None,
     ) -> dict:
         """
-        删除邮件
+        Delete an email from the specified folder (defaults to INBOX).
         """
         try:
             async with get_exchange_connection(account_id) as conn:
                 def delete_ops():
-                    item = conn.account.inbox.get(id=email_id)
+                    target_folder = _resolve_folder(conn.account, folder)
+                    item = target_folder.get(id=email_id)
                     if item:
                         item.delete()
                         return item, True
@@ -758,17 +737,18 @@ class EmailService:
         account_id: int,
         email_id: str,
         is_read: bool = True,
+        folder: str = "INBOX",
         api_key_id: Optional[int] = None,
         request_ip: Optional[str] = None,
     ) -> dict:
         """
-        标记邮件为已读/未读
+        Toggle the read/unread flag on an email in the specified folder.
         """
         try:
             async with get_exchange_connection(account_id) as conn:
                 def mark_ops():
-                    # 查找邮件
-                    item = conn.account.inbox.get(id=email_id)
+                    target_folder = _resolve_folder(conn.account, folder)
+                    item = target_folder.get(id=email_id)
                     if not item:
                         return None, False
                     
@@ -810,6 +790,7 @@ class EmailService:
         self,
         request: EmailSearchRequest,
         api_key_id: Optional[int] = None,
+        request_ip: Optional[str] = None,
     ) -> dict:
         """
         搜索邮件
@@ -819,18 +800,14 @@ class EmailService:
             
             async with get_exchange_connection(request.account_id) as conn:
                 def search_ops():
-                    folder = conn.account.inbox
-                    
-                    # 使用 Q 对象构建 OR 查询
+                    folder = _resolve_folder(conn.account, request.folder)
+
                     query_filter = Q(subject__icontains=request.query) | Q(body__icontains=request.query)
                     items = folder.filter(query_filter)
-                    
-                    # 日期过滤（需要 timezone aware）
-                    # from exchangelib import UTC (Done outside)
-                    
+
                     if request.date_from:
                         date_from = request.date_from
-                        # 如果是 naive datetime，添加 UTC 时区
+                        # Ensure datetime is timezone-aware for EWS comparison
                         if date_from.tzinfo is None:
                             date_from = date_from.replace(tzinfo=UTC)
                         items = items.filter(datetime_received__gte=date_from)
@@ -840,9 +817,6 @@ class EmailService:
                             date_to = date_to.replace(tzinfo=UTC)
                         items = items.filter(datetime_received__lte=date_to)
                     
-                    # 限制数量
-                    # Slicing a QuerySet triggers fetch? No, iterating slicing result does.
-                    # We should convert to list inside executor.
                     fetched_items = list(items[:request.limit])
                     
                     # 转换结果
@@ -873,13 +847,12 @@ class EmailService:
                 loop = asyncio.get_running_loop()
                 email_items = await loop.run_in_executor(None, search_ops)
                 
-                # 记录日志
                 await ExchangeMailLog.create(
                     api_key_id=api_key_id,
                     account_id=request.account_id,
                     action="search",
                     status="success",
-                    request_ip=None,  # search_emails schema doesn't seem to pass request_ip, treating as internal or need to update signature if strict
+                    request_ip=request_ip,
                 )
 
                 return {
@@ -902,6 +875,7 @@ class EmailService:
         self,
         account_id: int,
         api_key_id: Optional[int] = None,
+        request_ip: Optional[str] = None,
     ) -> dict:
         """
         获取所有文件夹列表（递归）
@@ -958,13 +932,12 @@ class EmailService:
                 loop = asyncio.get_running_loop()
                 folders = await loop.run_in_executor(None, folder_ops)
                 
-                # 记录日志
                 await ExchangeMailLog.create(
                     api_key_id=api_key_id,
                     account_id=account_id,
                     action="folders_all",
                     status="success",
-                    request_ip=None, 
+                    request_ip=request_ip,
                 )
 
                 return {
@@ -1052,17 +1025,7 @@ class EmailService:
             
             async with get_exchange_connection(request.account_id) as conn:
                 def sync_ops():
-                    # 获取文件夹
-                    if request.folder.upper() == "INBOX":
-                        folder = conn.account.inbox
-                    elif request.folder.upper() == "SENT":
-                        folder = conn.account.sent
-                    elif request.folder.upper() == "DRAFTS":
-                        folder = conn.account.drafts
-                    elif request.folder.upper() == "TRASH":
-                        folder = conn.account.trash
-                    else:
-                        folder = conn.account.inbox / request.folder
+                    folder = _resolve_folder(conn.account, request.folder)
                     
                     # 执行同步 (Blocking)
                     # max_changes_returned controls page size
@@ -1173,10 +1136,6 @@ class EmailService:
             }
 
 
-# 全局服务实例
-_email_service: Optional[EmailService] = None
-
-
 @lru_cache(maxsize=1)
 def get_email_service() -> EmailService:
     """获取邮件服务实例"""
@@ -1185,61 +1144,45 @@ def get_email_service() -> EmailService:
 
 async def recover_pending_emails():
     """
-    恢复未完成的邮件发送任务
-    
-    应在服务启动时调用，扫描最近24小时内状态为 pending 的邮件日志，
-    并尝试重新发送。
-    
+    Mark in-flight 'pending' send tasks as failed on service start-up.
+
+    Email body content is intentionally NOT persisted to the mail-log table,
+    so true re-delivery after a crash is impossible without the original
+    caller retrying.  We therefore mark these records as 'failed' with a
+    clear error message so operators know what happened, rather than
+    silently dropping them or spinning forever.
+
     Returns:
-        dict: {"recovered": int, "failed": int, "skipped": int}
+        dict: {"recovered": int, "failed": int}
     """
-    from datetime import timedelta
-    
-    service = get_email_service()
-    recovered = 0
-    failed = 0
-    skipped = 0
-    
-    # 查找最近24小时内的 pending 任务
     cutoff_time = datetime.now() - timedelta(hours=24)
     pending_logs = await ExchangeMailLog.filter(
         status="pending",
         action="send",
         created_at__gte=cutoff_time,
     ).all()
-    
-    logger.info(f"发现 {len(pending_logs)} 个待恢复的邮件任务")
-    
+
+    if not pending_logs:
+        return {"recovered": 0, "failed": 0}
+
+    logger.warning(
+        f"Found {len(pending_logs)} pending send task(s) from before restart. "
+        "Email content is not persisted; marking as failed. "
+        "Clients should retry these messages."
+    )
+
+    failed = 0
     for log in pending_logs:
         try:
-            # 检查是否已超时（超过24小时的 pending 可能是已丢失的任务）
-            # 注意：如果服务停止了很久，这里可能会误判。
-            # 但既然是"start"时调用，说明服务刚重启。
-            # 我们可以更激进一点，所有 pending 都由于重启而丢失了执行上下文，所以都应该尝试恢复。
-            
-            logger.info(f"正在恢复邮件任务 {log.id}...")
-            
-            # 使用后台任务直接发送（不传入 request，强制从 DB 恢复）
-            from app.core.bgtask import BgTasks
-            import asyncio
-            
-            # 为了避免阻塞启动流程，放入后台任务队列
-            await BgTasks.add_task(
-                 service._send_email_bg_task,
-                 log_id=log.id,
-                 request=None
+            log.status = "failed"
+            log.error_message = (
+                "Service restarted before send completed. "
+                "Email content not persisted – caller must retry."
             )
-            
-            recovered += 1
-            
-        except Exception as e:
-            logger.error(f"恢复任务 {log.id} 时出错: {e}")
+            await log.save()
             failed += 1
-    
-    logger.info(f"任务恢复完成: 恢复 {recovered}, 失败 {failed}, 跳过 {skipped}")
-    
-    return {
-        "recovered": recovered,
-        "failed": failed,
-        "skipped": skipped,
-    }
+        except Exception as e:
+            logger.error(f"Failed to update log {log.id}: {e}")
+
+    logger.info(f"Startup recovery complete: {failed} task(s) marked as failed.")
+    return {"recovered": 0, "failed": failed}

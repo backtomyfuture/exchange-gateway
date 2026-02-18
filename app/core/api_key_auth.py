@@ -204,7 +204,29 @@ DependApiKeyForward = ApiKeyAuth(required_permissions=["forward"])
 DependApiKeyContact = ApiKeyAuth(required_permissions=["contacts"])
 DependApiKeyAny = ApiKeyAuth()  # 任意有效密钥
 
-# Webhook 权限
+# Webhook permissions
 DependApiKeyWebhook = ApiKeyAuth(required_permissions=["webhook"])
-# 可选的 Webhook 权限 (用于同时支持 User/APIKey)
+# Optional webhook auth (supports both JWT user and API key callers)
 OptionalApiKeyWebhook = ApiKeyAuth(required_permissions=["webhook"], auto_error=False)
+
+
+def verify_account_access(api_key: ExchangeApiKey, account_id: int) -> None:
+    """
+    Raise HTTP 403 if *api_key* is not allowed to operate on *account_id*.
+
+    An empty ``allowed_accounts`` list means the key has access to **all**
+    accounts.  Use this helper in every route handler instead of repeating
+    the same three-line check inline.
+
+    Usage::
+
+        @router.post("/send")
+        async def send_email(
+            data: EmailSendRequest,
+            api_key: ExchangeApiKey = Depends(DependApiKeySend),
+        ):
+            verify_account_access(api_key, data.account_id)
+            ...
+    """
+    if api_key.allowed_accounts and account_id not in api_key.allowed_accounts:
+        raise HTTPException(status_code=403, detail="API key is not authorised for this account")
