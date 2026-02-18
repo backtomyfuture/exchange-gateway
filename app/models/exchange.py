@@ -104,10 +104,9 @@ class ExchangeMailLog(BaseModel, TimestampMixin):
     request_ip = fields.CharField(max_length=50, null=True, description="请求IP")
     request_id = fields.CharField(max_length=50, null=True, description="请求ID", db_index=True)
 
-    # 邮件内容持久化（用于重试/恢复）
-    # body = fields.TextField(null=True, description="邮件正文")
-    # body_type = fields.CharField(max_length=10, default="text", description="正文类型")
-    # attachments_payload = fields.JSONField(null=True, description="附件数据JSON")  # [{"filename":..., "content":..., "content_type":...}]
+    # 邮件内容持久化（用于ARQ重试/恢复）
+    # 存储序列化的 EmailSendRequest，供进程重启后重新入队
+    request_body = fields.JSONField(null=True, default=None, description="序列化的发送请求体，用于ARQ重试")
 
     class Meta:
         table = "exchange_mail_log"
