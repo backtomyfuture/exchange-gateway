@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from tortoise import Tortoise
 
 from app.core.arq_pool import close_arq_pool, init_arq_pool
@@ -26,9 +26,11 @@ async def lifespan(app: FastAPI):
     # 恢复未完成的邮件发送任务
     try:
         from app.services.exchange.email_service import recover_pending_emails
+
         await recover_pending_emails()
     except Exception as e:
         import logging
+
         logging.getLogger(__name__).warning(f"邮件任务恢复失败: {e}")
 
     yield
@@ -39,6 +41,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     from app.core.logging import configure_logging
+
     configure_logging()
 
     app = FastAPI(
@@ -53,6 +56,7 @@ def create_app() -> FastAPI:
     register_routers(app, prefix="/api")
 
     from app.core.metrics import setup_instrumentator
+
     setup_instrumentator(app)
 
     @app.get("/", tags=["Root"], summary="首页欢迎信息")

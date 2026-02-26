@@ -4,8 +4,6 @@
 """
 
 import re
-from functools import lru_cache
-from typing import Optional
 
 from app.log import logger
 from app.models.exchange import ExchangeEmailTemplate
@@ -18,14 +16,12 @@ class TemplateService:
     管理邮件模板，支持变量替换
     """
 
-    import re
-
     # Jinja2 默认变量匹配模式（编译后的正则表达式）
     VARIABLE_PATTERN = re.compile(r"\{\{\s*(\w+)\s*\}\}")
 
     def __init__(self):
         # 初始化 Jinja2 环境
-        from jinja2 import Environment, BaseLoader, select_autoescape
+        from jinja2 import BaseLoader, Environment, select_autoescape
 
         self.env = Environment(
             loader=BaseLoader(),
@@ -140,7 +136,7 @@ class TemplateService:
         owner_id: int,
         page: int = 1,
         page_size: int = 20,
-        category: Optional[str] = None,
+        category: str | None = None,
         active_only: bool = False,
     ) -> dict:
         """
@@ -226,7 +222,7 @@ class TemplateService:
             logger.error(f"预览模板失败: {e}")
             return {"success": False, "message": f"预览失败: {str(e)}"}
 
-    async def get_template_for_send(self, template_id: int) -> Optional[ExchangeEmailTemplate]:
+    async def get_template_for_send(self, template_id: int) -> ExchangeEmailTemplate | None:
         """
         获取用于发送的模板（API调用，不检查owner）
         """
@@ -235,7 +231,7 @@ class TemplateService:
             is_active=True,
         ).first()
 
-    async def get_template_by_name(self, name: str) -> Optional[ExchangeEmailTemplate]:
+    async def get_template_by_name(self, name: str) -> ExchangeEmailTemplate | None:
         """
         按名称获取用于发送的模板（API调用，不检查owner）
         """
@@ -250,7 +246,7 @@ class TemplateService:
         """
         try:
             # 配置 Jinja2 保留未定义的变量
-            from jinja2 import Environment, BaseLoader, select_autoescape, StrictUndefined
+            from jinja2 import BaseLoader, Environment, StrictUndefined, select_autoescape
 
             env = Environment(
                 loader=BaseLoader(),
@@ -290,7 +286,7 @@ class TemplateService:
 
 
 # 全局服务实例
-_template_service: Optional[TemplateService] = None
+_template_service: TemplateService | None = None
 
 
 def get_template_service() -> TemplateService:

@@ -6,8 +6,6 @@ Exchange 连接池管理
 import asyncio
 import time
 from contextlib import asynccontextmanager
-from functools import lru_cache
-from typing import Optional
 
 import urllib3
 from exchangelib import (
@@ -17,17 +15,15 @@ from exchangelib import (
     Configuration,
     Credentials,
 )
+from exchangelib.errors import ErrorTimeoutExpired, TransportError
 from exchangelib.protocol import BaseProtocol, FaultTolerance
-from app.utils.exchange_adapter import LegacySSLAdapter
 
 from app.log import logger
 from app.models.exchange import ExchangeAccount
-from app.services.exchange.circuit_breaker import CircuitBreaker, CircuitOpenError
+from app.services.exchange.circuit_breaker import CircuitBreaker
 from app.settings import settings
 from app.utils.crypto import get_crypto
-
-from exchangelib.errors import TransportError, ErrorTimeoutExpired
-
+from app.utils.exchange_adapter import LegacySSLAdapter
 
 # 禁用 SSL 警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -173,7 +169,7 @@ class ExchangeConnectionPool:
         concurrent requests for different accounts are never serialised.
         """
         # ── Step 1: look for an idle, non-expired connection ──────────────
-        candidate: Optional[ExchangeConnection] = None
+        candidate: ExchangeConnection | None = None
         async with self._lock:
             if account_id in self._pools:
                 pool = self._pools[account_id]
@@ -195,12 +191,8 @@ class ExchangeConnectionPool:
             candidate.in_use = False
             async with self._lock:
                 if account_id in self._pools:
-                    self._pools[account_id] = [
-                        c for c in self._pools[account_id] if c is not candidate
-                    ]
-                ExchangeConnectionPool._total_connections = max(
-                    0, ExchangeConnectionPool._total_connections - 1
-                )
+                    self._pools[account_id] = [c for c in self._pools[account_id] if c is not candidate]
+                ExchangeConnectionPool._total_connections = max(0, ExchangeConnectionPool._total_connections - 1)
 
         # ── Step 3: create a new connection (DB + EWS I/O, no lock held) ──
         db_account = await ExchangeAccount.filter(id=account_id).first()
@@ -243,13 +235,9 @@ class ExchangeConnectionPool:
         async with self._lock:
             for account_id in list(self._pools.keys()):
                 before = len(self._pools[account_id])
-                self._pools[account_id] = [
-                    c for c in self._pools[account_id] if not c.is_expired(self._max_age)
-                ]
+                self._pools[account_id] = [c for c in self._pools[account_id] if not c.is_expired(self._max_age)]
                 removed = before - len(self._pools[account_id])
-                ExchangeConnectionPool._total_connections = max(
-                    0, ExchangeConnectionPool._total_connections - removed
-                )
+                ExchangeConnectionPool._total_connections = max(0, ExchangeConnectionPool._total_connections - removed)
                 if not self._pools[account_id]:
                     del self._pools[account_id]
 
@@ -407,7 +395,7 @@ class ExchangeConnectionPool:
 
 
 # 全局连接池实例
-_connection_pool: Optional[ExchangeConnectionPool] = None
+_connection_pool: ExchangeConnectionPool | None = None
 
 
 def get_connection_pool() -> ExchangeConnectionPool:

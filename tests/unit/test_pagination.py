@@ -1,4 +1,4 @@
-from app.schemas.common import PageParams, Page
+from app.schemas.common import Page, PageParams
 
 
 def test_page_params_defaults():

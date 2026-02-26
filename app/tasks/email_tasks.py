@@ -4,13 +4,14 @@ ARQ email send task — persistent, retriable email sending.
 Replaces the in-process BackgroundTask pattern. Idempotent: if the log
 entry is not in 'pending' state, silently skips.
 """
+
 import logging
 import time
 
 from arq import Retry
-from exchangelib.errors import TransportError, ErrorTimeoutExpired
+from exchangelib.errors import ErrorTimeoutExpired, TransportError
 
-from app.core.metrics import email_sent_total, email_duration_seconds
+from app.core.metrics import email_duration_seconds, email_sent_total
 from app.models.exchange import ExchangeMailLog
 from app.schemas.exchange import EmailSendRequest
 from app.services.exchange.email_service import get_email_service
@@ -68,7 +69,10 @@ async def send_email_task(ctx: dict, mail_log_id: int) -> dict:
         delay = _RETRY_DELAYS[attempt - 1]
         logger.warning(
             "send_email_task: log %d transient error (attempt %d), retry in %ds: %s",
-            mail_log_id, attempt, delay, exc,
+            mail_log_id,
+            attempt,
+            delay,
+            exc,
         )
         raise Retry(defer=delay)
 

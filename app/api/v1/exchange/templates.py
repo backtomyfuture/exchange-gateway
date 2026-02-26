@@ -1,11 +1,12 @@
 """
 Exchange 邮件模板 API 路由
 """
+
 from fastapi import APIRouter, Depends, Query
 
 from app.core.dependency import AuthControl, DependPermission
 from app.models import User
-from app.schemas.base import Success, Fail
+from app.schemas.base import Fail, Success
 from app.schemas.exchange import TemplateCreate, TemplateUpdate
 from app.services.exchange import get_template_service
 
@@ -31,7 +32,7 @@ async def list_templates(
         category=category,
         active_only=active_only,
     )
-    
+
     if result["success"]:
         return Success(data=result["items"], total=result["total"])
     else:
@@ -51,7 +52,7 @@ async def get_template(
         template_id=template_id,
         owner_id=current_user.id,
     )
-    
+
     if result["success"]:
         return Success(data=result["data"])
     else:
@@ -71,7 +72,7 @@ async def create_template(
         data=data,
         owner_id=current_user.id,
     )
-    
+
     if result["success"]:
         return Success(msg=result["message"], data=result.get("data"))
     else:
@@ -91,7 +92,7 @@ async def update_template(
         data=data,
         owner_id=current_user.id,
     )
-    
+
     if result["success"]:
         return Success(msg=result["message"], data=result.get("data"))
     else:
@@ -111,7 +112,7 @@ async def delete_template(
         template_id=template_id,
         owner_id=current_user.id,
     )
-    
+
     if result["success"]:
         return Success(msg=result["message"])
     else:
@@ -133,7 +134,7 @@ async def preview_template(
         owner_id=current_user.id,
         variables=variables or {},
     )
-    
+
     if result["success"]:
         return Success(data=result["data"])
     else:

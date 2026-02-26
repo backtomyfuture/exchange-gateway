@@ -42,4 +42,5 @@ def test_fallback_to_memory():
     with patch("app.core.redis_rate_limiter._rate_limiter", None):
         limiter = get_rate_limiter()
         from app.core.rate_limiter import RateLimiter
+
         assert isinstance(limiter, RateLimiter)

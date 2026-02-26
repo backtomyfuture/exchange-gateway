@@ -3,13 +3,12 @@
 """
 
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from app.services.exchange.connection_pool import (
     ExchangeConnectionPool,
-    ExchangeConnection,
-    get_connection_pool,
 )
 
 
@@ -182,7 +181,7 @@ class TestConnectionPoolWarmup:
                 if 1 in pool._warmup_tasks:
                     try:
                         await asyncio.wait_for(pool._warmup_tasks[1], timeout=2.0)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         pass
 
                 # 验证预热状态

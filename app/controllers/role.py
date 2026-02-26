@@ -1,5 +1,3 @@
-from typing import List
-
 from app.core.crud import CRUDBase
 from app.models.admin import Api, Menu, Role
 from app.schemas.roles import RoleCreate, RoleUpdate
@@ -12,7 +10,7 @@ class RoleController(CRUDBase[Role, RoleCreate, RoleUpdate]):
     async def is_exist(self, name: str) -> bool:
         return await self.model.filter(name=name).exists()
 
-    async def update_roles(self, role: Role, menu_ids: List[int], api_infos: List[dict]) -> None:
+    async def update_roles(self, role: Role, menu_ids: list[int], api_infos: list[dict]) -> None:
         await role.menus.clear()
         for menu_id in menu_ids:
             menu_obj = await Menu.filter(id=menu_id).first()

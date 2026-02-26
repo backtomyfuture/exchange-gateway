@@ -1,12 +1,16 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
-from app.services.exchange.email_service import EmailService
-from app.schemas.exchange import EmailSendRequest
+
 from app.models.exchange import ExchangeMailLog
+from app.schemas.exchange import EmailSendRequest
+from app.services.exchange.email_service import EmailService
+
 
 @pytest.fixture
 def email_service():
     return EmailService()
+
 
 @pytest.fixture
 def mock_arq_pool():
@@ -15,6 +19,7 @@ def mock_arq_pool():
     with patch("app.services.exchange.email_service.get_arq_pool", return_value=mock_pool):
         yield mock_pool
 
+
 @pytest.fixture
 def mock_exchange_connection():
     with patch("app.services.exchange.email_service.get_exchange_connection") as mock:
@@ -22,23 +27,21 @@ def mock_exchange_connection():
         mock.return_value.__aenter__.return_value = mock_conn
         yield mock_conn
 
+
 @pytest.fixture(autouse=True)
 def mock_exchangelib_classes():
-    with patch("app.services.exchange.email_service.Message") as mock_msg, \
-         patch("app.services.exchange.email_service.HTMLBody") as mock_html, \
-         patch("app.services.exchange.email_service.FileAttachment") as mock_file:
+    with (
+        patch("app.services.exchange.email_service.Message") as mock_msg,
+        patch("app.services.exchange.email_service.HTMLBody") as mock_html,
+        patch("app.services.exchange.email_service.FileAttachment") as mock_file,
+    ):
         yield mock_msg, mock_html, mock_file
 
 
 @pytest.mark.asyncio
 async def test_send_email_enqueues_task(email_service, mock_arq_pool):
     # Prepare request
-    request = EmailSendRequest(
-        account_id=1,
-        to=["test@example.com"],
-        subject="Test Subject",
-        body="Test Body"
-    )
+    request = EmailSendRequest(account_id=1, to=["test@example.com"], subject="Test Subject", body="Test Body")
 
     # Call method
     result = await email_service.send_email(request)
@@ -57,22 +60,13 @@ async def test_send_email_enqueues_task(email_service, mock_arq_pool):
     # Verify ARQ job enqueued
     mock_arq_pool.enqueue_job.assert_called_once_with("send_email_task", log.id)
 
+
 @pytest.mark.asyncio
 async def test_send_email_bg_task_success(email_service, mock_exchange_connection):
     # Create log entry
-    log = await ExchangeMailLog.create(
-        account_id=1,
-        action="send",
-        status="pending",
-        subject="Test"
-    )
+    log = await ExchangeMailLog.create(account_id=1, action="send", status="pending", subject="Test")
 
-    request = EmailSendRequest(
-        account_id=1,
-        to=["test@example.com"],
-        subject="Test",
-        body="Test Body"
-    )
+    request = EmailSendRequest(account_id=1, to=["test@example.com"], subject="Test", body="Test Body")
 
     # Execute background task
     await email_service._send_email_bg_task(log.id, request)
@@ -82,7 +76,8 @@ async def test_send_email_bg_task_success(email_service, mock_exchange_connectio
     assert log.status == "success"
 
     # Verify exchange call
-    mock_exchange_connection.account.return_value = MagicMock() # Mock account property
+    mock_exchange_connection.account.return_value = MagicMock()  # Mock account property
+
 
 @pytest.mark.asyncio
 async def test_send_email_bg_task_retry(email_service, mock_exchange_connection, mock_exchangelib_classes):
@@ -91,29 +86,15 @@ async def test_send_email_bg_task_retry(email_service, mock_exchange_connection,
     mock_message_cls, _, _ = mock_exchangelib_classes
 
     # Create log entry
-    log = await ExchangeMailLog.create(
-        account_id=1,
-        action="send",
-        status="pending",
-        subject="Retry Test"
-    )
+    log = await ExchangeMailLog.create(account_id=1, action="send", status="pending", subject="Retry Test")
 
-    request = EmailSendRequest(
-        account_id=1,
-        to=["test@example.com"],
-        subject="Retry Test",
-        body="Test Body"
-    )
+    request = EmailSendRequest(account_id=1, to=["test@example.com"], subject="Retry Test", body="Test Body")
 
     # Setup mock to fail twice then succeed
     mock_msg_instance = mock_message_cls.return_value
     # Side effect: 2 failures, then success (return None)
     # Default is save_to_sent=True, so send_and_save is called
-    mock_msg_instance.send_and_save.side_effect = [
-        TransportError("Fail 1"),
-        TransportError("Fail 2"),
-        None
-    ]
+    mock_msg_instance.send_and_save.side_effect = [TransportError("Fail 1"), TransportError("Fail 2"), None]
 
     # We also need to speed up sleep for tests
     with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:

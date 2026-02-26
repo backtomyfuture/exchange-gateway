@@ -41,7 +41,7 @@ def get_tortoise_config():
     """
     # 优先解析 MYSQL_URL / DATABASE_URL
     database_url = os.getenv("MYSQL_URL") or os.getenv("DATABASE_URL")
-    
+
     # DEV_MODE 默认值
     if not database_url:
         dev_mode = os.getenv("DEV_MODE", "false").lower() in ("true", "1", "yes")
@@ -58,7 +58,7 @@ def get_tortoise_config():
     else:
         db_engine = "tortoise.backends.mysql"
         db_conn_name = "mysql"
-    
+
     # 解析参数
     db_params = parse_database_url(database_url)
 
@@ -105,17 +105,17 @@ async def run_migration():
 
     # 获取配置中的数据库连接参数进行打印
     # 动态获取第一个连接的名称
-    first_conn_name = next(iter(tortoise_config['connections']))
-    creds = tortoise_config['connections'][first_conn_name]['credentials']
-    
+    first_conn_name = next(iter(tortoise_config["connections"]))
+    creds = tortoise_config["connections"][first_conn_name]["credentials"]
+
     # 构造显示的 URL (隐藏密码)
     # 不再尝试从配置中读取 'url'，而是从 get_tortoise_config 解析出的参数重组
-    scheme = "postgres" if "postgres" in tortoise_config['connections'][first_conn_name]['engine'] else "mysql"
-    user = creds.get('user', 'root')
-    host = creds.get('host', 'localhost')
-    port = creds.get('port', 3306)
-    database = creds.get('database', 'exchange_gateway')
-    
+    scheme = "postgres" if "postgres" in tortoise_config["connections"][first_conn_name]["engine"] else "mysql"
+    user = creds.get("user", "root")
+    host = creds.get("host", "localhost")
+    port = creds.get("port", 3306)
+    database = creds.get("database", "exchange_gateway")
+
     safe_url = f"{scheme}://{user}:****@{host}:{port}/{database}"
     print(f"Database URL: {safe_url}")
     print()
@@ -131,6 +131,7 @@ async def run_migration():
     print("Applying database migrations via Aerich...")
     try:
         from aerich import Command
+
         command = Command(tortoise_config=tortoise_config, app="models")
         await command.init()
         await command.upgrade()

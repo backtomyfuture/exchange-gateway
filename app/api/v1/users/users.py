@@ -6,7 +6,7 @@ from tortoise.expressions import Q
 from app.controllers.dept import dept_controller
 from app.controllers.user import user_controller
 from app.schemas.base import Fail, Success, SuccessExtra
-from app.schemas.users import *
+from app.schemas.users import UserCreate, UserUpdate
 
 logger = logging.getLogger(__name__)
 

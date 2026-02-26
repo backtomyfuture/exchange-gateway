@@ -6,7 +6,7 @@ from tortoise.expressions import Q
 
 from app.controllers import role_controller
 from app.schemas.base import Success, SuccessExtra
-from app.schemas.roles import *
+from app.schemas.roles import RoleCreate, RoleUpdate, RoleUpdateMenusApis
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

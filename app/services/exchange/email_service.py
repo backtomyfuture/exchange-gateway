@@ -1,13 +1,15 @@
 """
 Email service – core send, receive, search and sync operations via exchangelib.
 """
-import base64
+
 import asyncio
-import uuid
-from datetime import datetime, timedelta
-from functools import lru_cache
-from typing import Optional
+import base64
+import binascii
+import gzip
 import re
+import uuid
+from datetime import datetime
+from functools import lru_cache
 
 from exchangelib import (
     UTC,
@@ -15,24 +17,21 @@ from exchangelib import (
     HTMLBody,
     Message,
 )
-
-from app.log import logger
-import binascii
-import gzip
-from exchangelib.errors import TransportError, ErrorTimeoutExpired, ErrorInvalidSyncStateData
-from app.models.exchange import ExchangeMailLog
-from app.schemas.exchange import (
-    EmailItem,
-    EmailListRequest,
-    EmailSendRequest,
-    EmailDraftRequest,
-    EmailSearchRequest,
-    FolderItem,
-    EmailReplyRequest,
-    EmailForwardRequest,
-)
+from exchangelib.errors import ErrorInvalidSyncStateData, ErrorTimeoutExpired, TransportError
 
 from app.core.arq_pool import get_arq_pool
+from app.log import logger
+from app.models.exchange import ExchangeMailLog
+from app.schemas.exchange import (
+    EmailDraftRequest,
+    EmailForwardRequest,
+    EmailItem,
+    EmailListRequest,
+    EmailReplyRequest,
+    EmailSearchRequest,
+    EmailSendRequest,
+)
+
 from .connection_pool import get_exchange_connection
 
 
@@ -63,16 +62,13 @@ class EmailService:
     邮件服务
     封装 exchangelib 的邮件操作
     """
-    
+
     async def send_email(
-        self,
-        request: EmailSendRequest,
-        api_key_id: Optional[int] = None,
-        request_ip: Optional[str] = None
+        self, request: EmailSendRequest, api_key_id: int | None = None, request_ip: str | None = None
     ) -> dict:
         """
         发送邮件（异步）
-        
+
         1. 创建发送日志（状态：pending）
         2. 添加后台任务进行实际发送
         3. 立即返回日志ID
@@ -103,12 +99,7 @@ class EmailService:
             redis = get_arq_pool()
             await redis.enqueue_job("send_email_task", log_entry.id)
 
-            return {
-                "success": True,
-                "message": "邮件已加入发送队列",
-                "log_id": log_entry.id,
-                "status": "queued"
-            }
+            return {"success": True, "message": "邮件已加入发送队列", "log_id": log_entry.id, "status": "queued"}
 
         except Exception as e:
             logger.error(f"邮件入队失败: {e}")
@@ -117,28 +108,27 @@ class EmailService:
                 "message": f"邮件入队失败: {str(e)}",
                 "log_id": None,
             }
-    
+
     async def create_draft(
-        self,
-        request: EmailDraftRequest,
-        api_key_id: Optional[int] = None,
-        request_ip: Optional[str] = None
+        self, request: EmailDraftRequest, api_key_id: int | None = None, request_ip: str | None = None
     ) -> dict:
         """
         创建草稿
         """
         try:
             async with get_exchange_connection(request.account_id) as conn:
+
                 def draft_ops():
                     # 构建邮件正文
                     if request.body_type == "html":
                         from .format_utils import process_inline_images
+
                         processed_body, inline_attachments = process_inline_images(request.body)
                         body = HTMLBody(processed_body) if processed_body else None
                     else:
                         body = request.body
                         inline_attachments = []
-                    
+
                     # 创建邮件
                     message = Message(
                         account=conn.account,
@@ -159,7 +149,7 @@ class EmailService:
                                 content_type=att.content_type,
                             )
                             message.attach(file_attachment)
-                    
+
                     # 添加处理后的内嵌图片附件
                     for att_data in inline_attachments:
                         content = base64.b64decode(att_data["content"])
@@ -168,17 +158,17 @@ class EmailService:
                             content=content,
                             content_type=att_data["content_type"],
                             content_id=att_data["content_id"],
-                            is_inline=True
+                            is_inline=True,
                         )
                         message.attach(inline_att)
-                    
+
                     # 保存到草稿箱
                     message.save()
                     return message.id, message.changekey
 
                 loop = asyncio.get_running_loop()
                 item_id, changekey = await loop.run_in_executor(None, draft_ops)
-                
+
                 await ExchangeMailLog.create(
                     api_key_id=api_key_id,
                     account_id=request.account_id,
@@ -188,14 +178,9 @@ class EmailService:
                     status="success",
                     request_ip=request_ip,
                 )
-                
-                return {
-                    "success": True,
-                    "message": "草稿已创建",
-                    "id": item_id,
-                    "changekey": changekey
-                }
-                
+
+                return {"success": True, "message": "草稿已创建", "id": item_id, "changekey": changekey}
+
         except Exception as e:
             logger.error(f"创建草稿失败: {e}")
             return {
@@ -208,10 +193,12 @@ class EmailService:
         Called by the ARQ send_email_task. No retry logic here — ARQ handles retries.
         """
         async with get_exchange_connection(account_id) as conn:
+
             def send_ops():
                 inline_attachments = []
                 if request.body_type == "html":
                     from .format_utils import process_inline_images
+
                     processed_body, inline_attachments = process_inline_images(request.body)
                     body = HTMLBody(processed_body)
                 else:
@@ -228,19 +215,23 @@ class EmailService:
                 if request.attachments:
                     for att in request.attachments:
                         content = base64.b64decode(att.content)
-                        message.attach(FileAttachment(
-                            name=att.filename,
-                            content=content,
-                            content_type=att.content_type,
-                        ))
+                        message.attach(
+                            FileAttachment(
+                                name=att.filename,
+                                content=content,
+                                content_type=att.content_type,
+                            )
+                        )
                 for att_data in inline_attachments:
-                    message.attach(FileAttachment(
-                        name=att_data["filename"],
-                        content=base64.b64decode(att_data["content"]),
-                        content_type=att_data["content_type"],
-                        content_id=att_data["content_id"],
-                        is_inline=True,
-                    ))
+                    message.attach(
+                        FileAttachment(
+                            name=att_data["filename"],
+                            content=base64.b64decode(att_data["content"]),
+                            content_type=att_data["content_type"],
+                            content_id=att_data["content_id"],
+                            is_inline=True,
+                        )
+                    )
                 message.send(save_copy=request.save_to_sent)
 
             loop = asyncio.get_running_loop()
@@ -253,7 +244,6 @@ class EmailService:
         Transient network errors (TransportError, ErrorTimeoutExpired) are retried
         with linear back-off.  All other errors are considered non-retryable.
         """
-        from exchangelib.errors import TransportError, ErrorTimeoutExpired
 
         max_retries = 3
         retry_delay = 2  # seconds between attempts
@@ -272,11 +262,12 @@ class EmailService:
                         inline_attachments = []
                         if request.body_type == "html":
                             from .format_utils import process_inline_images
+
                             processed_body, inline_attachments = process_inline_images(request.body)
                             body = HTMLBody(processed_body)
                         else:
                             body = request.body
-                        
+
                         # 创建邮件
                         message = Message(
                             account=conn.account,
@@ -296,7 +287,7 @@ class EmailService:
                                     content_type=att.content_type,
                                 )
                                 message.attach(file_attachment)
-                        
+
                         # 添加处理后的内嵌图片附件
                         for att_data in inline_attachments:
                             content = base64.b64decode(att_data["content"])
@@ -305,10 +296,10 @@ class EmailService:
                                 content=content,
                                 content_type=att_data["content_type"],
                                 content_id=att_data["content_id"],
-                                is_inline=True
+                                is_inline=True,
                             )
                             message.attach(inline_att)
-                        
+
                         # 发送邮件
                         if request.save_to_sent:
                             message.send_and_save()
@@ -318,20 +309,20 @@ class EmailService:
                     # Execute in thread pool
                     loop = asyncio.get_running_loop()
                     await loop.run_in_executor(None, send_ops)
-                    
+
                     # 更新日志为成功
                     log_entry.status = "success"
                     log_entry.error_message = None
                     await log_entry.save()
-                    
+
                     logger.info(f"邮件发送成功 (LogID: {log_id})")
                     return  # 成功退出
-                    
+
             except (TransportError, ErrorTimeoutExpired) as e:
                 # 网络/连接错误，进行重试
                 error_msg = f"发送尝试 {attempt}/{max_retries} 失败: {str(e)}"
                 logger.warning(error_msg)
-                
+
                 if attempt < max_retries:
                     await asyncio.sleep(retry_delay * attempt)
                     continue
@@ -340,44 +331,44 @@ class EmailService:
                     log_entry.status = "failed"
                     log_entry.error_message = f"最终失败: {str(e)}"
                     await log_entry.save()
-            
+
             except Exception as e:
                 # 其他错误（如认证失败、数据格式错误），不重试
                 error_msg = f"发送失败(不可重试): {str(e)}"
                 logger.error(error_msg)
-                
+
                 log_entry.status = "failed"
                 log_entry.error_message = str(e)
                 await log_entry.save()
                 return
-    
+
     async def list_emails(
-        self,
-        request: EmailListRequest,
-        api_key_id: Optional[int] = None,
-        request_ip: Optional[str] = None
+        self, request: EmailListRequest, api_key_id: int | None = None, request_ip: str | None = None
     ) -> dict:
         """
         获取邮件列表
         """
         try:
             async with get_exchange_connection(request.account_id) as conn:
+
                 def list_ops():
                     try:
                         folder = _resolve_folder(conn.account, request.folder)
-                        
+
                         # 构建查询
                         if request.unread_only:
                             qs = folder.filter(is_read=False)
                         else:
                             qs = folder.all()
-                        
+
                         # 获取总数 (Blocking I/O)
                         total_count = qs.count()
-                        
+
                         # 分页获取 (Blocking I/O)
-                        fetched_items = qs.order_by('-datetime_received')[request.offset:request.offset + request.limit]
-                        
+                        fetched_items = qs.order_by("-datetime_received")[
+                            request.offset : request.offset + request.limit
+                        ]
+
                         # 转换为响应格式
                         email_list = []
                         for item in fetched_items:
@@ -392,15 +383,17 @@ class EmailService:
                                     item.datetime_received.minute,
                                     item.datetime_received.second,
                                 )
-                            
-                            email_list.append(EmailItem(
-                                id=item.id,
-                                subject=item.subject,
-                                sender=str(item.sender) if item.sender else None,
-                                received_time=received_time,
-                                is_read=item.is_read,
-                                has_attachments=item.has_attachments,
-                            ))
+
+                            email_list.append(
+                                EmailItem(
+                                    id=item.id,
+                                    subject=item.subject,
+                                    sender=str(item.sender) if item.sender else None,
+                                    received_time=received_time,
+                                    is_read=item.is_read,
+                                    has_attachments=item.has_attachments,
+                                )
+                            )
                         return total_count, email_list
                     except Exception as e:
                         logger.error(f"List ops error: {e}")
@@ -408,7 +401,7 @@ class EmailService:
 
                 loop = asyncio.get_running_loop()
                 total, email_items = await loop.run_in_executor(None, list_ops)
-                
+
                 # 记录日志
                 await ExchangeMailLog.create(
                     api_key_id=api_key_id,
@@ -423,7 +416,7 @@ class EmailService:
                     "total": total,
                     "items": email_items,
                 }
-                
+
         except Exception as e:
             logger.error(f"获取邮件列表失败: {e}")
             return {
@@ -432,13 +425,13 @@ class EmailService:
                 "items": [],
                 "message": str(e),
             }
-    
+
     async def get_email(
         self,
         account_id: int,
         email_id: str,
         folder: str = "INBOX",
-        api_key_id: Optional[int] = None,
+        api_key_id: int | None = None,
     ) -> dict:
         """
         Retrieve full email details including body, attachments and inline images.
@@ -446,13 +439,14 @@ class EmailService:
         """
         try:
             async with get_exchange_connection(account_id) as conn:
+
                 def get_ops():
                     target_folder = _resolve_folder(conn.account, folder)
                     item = target_folder.get(id=email_id)
-                    
+
                     if not item:
                         return None
-                    
+
                     # 获取附件信息
                     attachments = []
                     if item.attachments:
@@ -461,24 +455,26 @@ class EmailService:
                                 content = None
                                 if att.content:
                                     try:
-                                        content = base64.b64encode(att.content).decode('utf-8')
+                                        content = base64.b64encode(att.content).decode("utf-8")
                                     except Exception as e:
                                         logger.error(f"Failed to encode attachment {att.name}: {e}")
-                                
-                                attachments.append({
-                                    "name": att.name,
-                                    "content_type": att.content_type,
-                                    "size": att.size,
-                                    "content": content,
-                                    "content_id": att.content_id,
-                                    "is_inline": att.is_inline
-                                })
-                    
+
+                                attachments.append(
+                                    {
+                                        "name": att.name,
+                                        "content_type": att.content_type,
+                                        "size": att.size,
+                                        "content": content,
+                                        "content_id": att.content_id,
+                                        "is_inline": att.is_inline,
+                                    }
+                                )
+
                     # Log extracted attachments count
                     # logger.info(f"Extracted {len(attachments)} attachments for email {email_id}")
 
                     # 处理内嵌图片引用 (cid: -> data uri)
-                    body_content = item.body if hasattr(item, 'body') else None
+                    body_content = item.body if hasattr(item, "body") else None
                     if body_content and attachments:
                         for att in attachments:
                             # 只有内嵌图片且有内容ID和内容的才处理
@@ -488,10 +484,10 @@ class EmailService:
                                 # HTML 中引用通常是 src="cid:foo.bar@baz"
                                 # 我们尝试移除 <> 来匹配
                                 clean_cid = cid.strip("<>")
-                                
+
                                 # 构建 Data URI
                                 data_uri = f"data:{att['content_type']};base64,{att['content']}"
-                                
+
                                 # 替换 body 中的引用 (简单的字符串替换，或更复杂的正则)
                                 # 常见格式: src="cid:xyz"
                                 # 我们替换 "cid:xyz" -> "data:image/png;base64,..."
@@ -501,7 +497,7 @@ class EmailService:
                                     # 必须转义 custom_cid 中的特殊字符
                                     pattern = f"cid:{re.escape(clean_cid)}"
                                     body_content = re.sub(pattern, data_uri, body_content, flags=re.IGNORECASE)
-                                    
+
                                     # 有些情况可能 cid 没有被转义或者引用方式不同，尝试原始 cid
                                     if cid != clean_cid:
                                         pattern_raw = f"cid:{re.escape(cid)}"
@@ -523,7 +519,7 @@ class EmailService:
 
                 loop = asyncio.get_running_loop()
                 data = await loop.run_in_executor(None, get_ops)
-                
+
                 if not data:
                     return {
                         "success": False,
@@ -535,7 +531,7 @@ class EmailService:
                     "success": True,
                     "data": data,
                 }
-                
+
         except Exception as e:
             logger.error(f"获取邮件详情失败: {e}")
             return {
@@ -545,22 +541,19 @@ class EmailService:
             }
 
     async def reply_email(
-        self,
-        request: EmailReplyRequest,
-        api_key_id: Optional[int] = None,
-        request_ip: Optional[str] = None
+        self, request: EmailReplyRequest, api_key_id: int | None = None, request_ip: str | None = None
     ) -> dict:
         """
         回复邮件 (Outlook 风格)
         """
         try:
-            from app.services.exchange.format_utils import build_outlook_reply_header, process_inline_images
-            
+            from app.services.exchange.format_utils import process_inline_images
+
             async with get_exchange_connection(request.account_id) as conn:
+
                 def reply_ops():
                     # 查找原邮件
-                    import exchangelib.items
-                    
+
                     try:
                         item = conn.account.inbox.get(id=request.reference_item_id)
                     except Exception:
@@ -573,20 +566,19 @@ class EmailService:
                     # 注意：我们只处理用户的新回复内容，不包含原文
                     # 原文由 Exchange Server 自动附加
                     reply_body_html, user_inline_attachments = process_inline_images(request.body)
-                    
+
                     # 创建回复
                     if request.reply_all:
                         reply_item = item.create_reply_all(
-                            subject=request.subject if request.subject else None,
-                            body=HTMLBody(reply_body_html)
+                            subject=request.subject if request.subject else None, body=HTMLBody(reply_body_html)
                         )
                     else:
                         reply_item = item.create_reply(
                             subject=request.subject if request.subject else None,
                             body=HTMLBody(reply_body_html),
-                            to_recipients=request.to if request.to else None
+                            to_recipients=request.to if request.to else None,
                         )
-                    
+
                     # 设置 CC/BCC
                     if request.cc:
                         reply_item.cc_recipients = request.cc
@@ -603,7 +595,7 @@ class EmailService:
                                 content_type=att.content_type,
                             )
                             reply_item.attach(file_attachment)
-                            
+
                     # 添加用户回复中提取的内嵌图片附件 (Base64 -> CID)
                     for att_data in user_inline_attachments:
                         content = base64.b64decode(att_data["content"])
@@ -612,13 +604,13 @@ class EmailService:
                             content=content,
                             content_type=att_data["content_type"],
                             content_id=att_data["content_id"],
-                            is_inline=True
+                            is_inline=True,
                         )
                         reply_item.attach(inline_att)
 
                     # 发送
                     reply_item.send()
-                    
+
                     return True
 
                 loop = asyncio.get_running_loop()
@@ -643,18 +635,16 @@ class EmailService:
             return {"success": False, "message": str(e)}
 
     async def forward_email(
-        self,
-        request: EmailForwardRequest,
-        api_key_id: Optional[int] = None,
-        request_ip: Optional[str] = None
+        self, request: EmailForwardRequest, api_key_id: int | None = None, request_ip: str | None = None
     ) -> dict:
         """
         转发邮件 (Outlook 风格)
         """
         try:
-            from app.services.exchange.format_utils import build_outlook_reply_header, process_inline_images
-            
+            from app.services.exchange.format_utils import process_inline_images
+
             async with get_exchange_connection(request.account_id) as conn:
+
                 def forward_ops():
                     # 查找原邮件
                     try:
@@ -675,9 +665,9 @@ class EmailService:
                     forward_item = item.create_forward(
                         subject=request.subject if request.subject else None,
                         body=HTMLBody(forward_body_html),
-                        to_recipients=request.to
+                        to_recipients=request.to,
                     )
-                    
+
                     if request.cc:
                         forward_item.cc_recipients = request.cc
                     if request.bcc:
@@ -691,7 +681,7 @@ class EmailService:
                             content=content,
                             content_type=att_data["content_type"],
                             content_id=att_data["content_id"],
-                            is_inline=True
+                            is_inline=True,
                         )
                         forward_item.attach(inline_att)
 
@@ -708,7 +698,7 @@ class EmailService:
 
                     # 发送
                     forward_item.send()
-                    
+
                     return True
 
                 loop = asyncio.get_running_loop()
@@ -731,20 +721,21 @@ class EmailService:
         except Exception as e:
             logger.error(f"转发邮件失败: {e}")
             return {"success": False, "message": str(e)}
-    
+
     async def delete_email(
         self,
         account_id: int,
         email_id: str,
         folder: str = "INBOX",
-        api_key_id: Optional[int] = None,
-        request_ip: Optional[str] = None,
+        api_key_id: int | None = None,
+        request_ip: str | None = None,
     ) -> dict:
         """
         Delete an email from the specified folder (defaults to INBOX).
         """
         try:
             async with get_exchange_connection(account_id) as conn:
+
                 def delete_ops():
                     target_folder = _resolve_folder(conn.account, folder)
                     item = target_folder.get(id=email_id)
@@ -762,16 +753,15 @@ class EmailService:
                         api_key_id=api_key_id,
                         account_id=account_id,
                         action="delete",
-                        subject=item.subject if hasattr(item, 'subject') else None,
+                        subject=item.subject if hasattr(item, "subject") else None,
                         status="success",
                         request_ip=request_ip,
                     )
-                    
+
                     return {"success": True, "message": "邮件已删除"}
                 else:
                     return {"success": False, "message": "邮件不存在"}
 
-                    
         except Exception as e:
             logger.error(f"删除邮件失败: {e}")
             return {"success": False, "message": str(e)}
@@ -782,27 +772,28 @@ class EmailService:
         email_id: str,
         is_read: bool = True,
         folder: str = "INBOX",
-        api_key_id: Optional[int] = None,
-        request_ip: Optional[str] = None,
+        api_key_id: int | None = None,
+        request_ip: str | None = None,
     ) -> dict:
         """
         Toggle the read/unread flag on an email in the specified folder.
         """
         try:
             async with get_exchange_connection(account_id) as conn:
+
                 def mark_ops():
                     target_folder = _resolve_folder(conn.account, folder)
                     item = target_folder.get(id=email_id)
                     if not item:
                         return None, False
-                    
+
                     # 只有状态不一致时才更新
                     if item.is_read != is_read:
                         item.is_read = is_read
-                        item.save(update_fields=['is_read'])
+                        item.save(update_fields=["is_read"])
                         return item, True
-                    
-                    return item, True # 已经是一样状态，视为成功
+
+                    return item, True  # 已经是一样状态，视为成功
 
                 loop = asyncio.get_running_loop()
                 item, success = await loop.run_in_executor(None, mark_ops)
@@ -810,39 +801,39 @@ class EmailService:
                 if item:
                     # 记录日志 (可选，如果不希望记录太多可以跳过，或者记录为 update)
                     # 这里为了审计完整性，记录一下
-                    if success: # 只有真正存在才记录
-                         # 注意：ExchangeMailLog 表结构也许没有 update 动作，但 action 是 varchar，应该可以
+                    if success:  # 只有真正存在才记录
+                        # 注意：ExchangeMailLog 表结构也许没有 update 动作，但 action 是 varchar，应该可以
                         await ExchangeMailLog.create(
                             api_key_id=api_key_id,
                             account_id=account_id,
                             action="mark_read" if is_read else "mark_unread",
-                            subject=item.subject if hasattr(item, 'subject') else None,
+                            subject=item.subject if hasattr(item, "subject") else None,
                             status="success",
                             request_ip=request_ip,
                         )
-                    
+
                     return {"success": True, "message": f"邮件已标记为{'已读' if is_read else '未读'}"}
                 else:
                     return {"success": False, "message": "邮件不存在"}
-                    
+
         except Exception as e:
             logger.error(f"标记邮件状态失败: {e}")
             return {"success": False, "message": str(e)}
 
-    
     async def search_emails(
         self,
         request: EmailSearchRequest,
-        api_key_id: Optional[int] = None,
-        request_ip: Optional[str] = None,
+        api_key_id: int | None = None,
+        request_ip: str | None = None,
     ) -> dict:
         """
         搜索邮件
         """
         try:
             from exchangelib import Q
-            
+
             async with get_exchange_connection(request.account_id) as conn:
+
                 def search_ops():
                     folder = _resolve_folder(conn.account, request.folder)
 
@@ -860,9 +851,9 @@ class EmailService:
                         if date_to.tzinfo is None:
                             date_to = date_to.replace(tzinfo=UTC)
                         items = items.filter(datetime_received__lte=date_to)
-                    
-                    fetched_items = list(items[:request.limit])
-                    
+
+                    fetched_items = list(items[: request.limit])
+
                     # 转换结果
                     email_result = []
                     for item in fetched_items:
@@ -877,20 +868,22 @@ class EmailService:
                                 item.datetime_received.minute,
                                 item.datetime_received.second,
                             )
-                        
-                        email_result.append(EmailItem(
-                            id=item.id,
-                            subject=item.subject,
-                            sender=str(item.sender) if item.sender else None,
-                            received_time=received_time,
-                            is_read=item.is_read,
-                            has_attachments=item.has_attachments,
-                        ))
+
+                        email_result.append(
+                            EmailItem(
+                                id=item.id,
+                                subject=item.subject,
+                                sender=str(item.sender) if item.sender else None,
+                                received_time=received_time,
+                                is_read=item.is_read,
+                                has_attachments=item.has_attachments,
+                            )
+                        )
                     return email_result
 
                 loop = asyncio.get_running_loop()
                 email_items = await loop.run_in_executor(None, search_ops)
-                
+
                 await ExchangeMailLog.create(
                     api_key_id=api_key_id,
                     account_id=request.account_id,
@@ -904,7 +897,7 @@ class EmailService:
                     "total": len(email_items),
                     "items": email_items,
                 }
-                
+
         except Exception as e:
             logger.error(f"搜索邮件失败: {e}")
             return {
@@ -913,69 +906,71 @@ class EmailService:
                 "items": [],
                 "message": str(e),
             }
-    
 
     async def get_all_folders(
         self,
         account_id: int,
-        api_key_id: Optional[int] = None,
-        request_ip: Optional[str] = None,
+        api_key_id: int | None = None,
+        request_ip: str | None = None,
     ) -> dict:
         """
         获取所有文件夹列表（递归）
         """
         try:
             from app.schemas.exchange import FolderDetailItem
-            
+
             async with get_exchange_connection(account_id) as conn:
+
                 def folder_ops():
                     # 获取根目录下的所有文件夹（递归）
                     # msg_folder_root 通常对应 'Top of Information Store' (IPM_SUBTREE)
                     # 直接遍历 account.msg_folder_root 即可包含所有用户可见文件夹
-                    
+
                     root = conn.account.msg_folder_root
-                    
+
                     # 使用 walk() 遍历
                     # walk() 返回 (folder, path_depth, folder_depth)
                     # 但我们需要构建树状结构或者返回带 parent_id 的扁平列表
                     # exchangelib 的 folder 对象有 parent_id 属性吗？
                     # Folder 对象有 parent 属性，但它是一个对象。
-                    
+
                     all_folders = []
-                    
+
                     # 首先添加 Top of Information Store 本身 (可选，通常不需要)
                     # all_folders.append(root)
-                    
+
                     # 使用 walk() 获取所有子文件夹
                     for folder in root.walk():
                         all_folders.append(folder)
-                        
+
                     # 转换为 Schema
                     result_list = []
                     for f in all_folders:
                         try:
                             parent_id = f.parent.id if f.parent else None
                             # 如果 parent 是 root，可能需要特殊处理，但这里直接返回即可
-                            
-                            result_list.append(FolderDetailItem(
-                                id=f.id,
-                                changekey=f.changekey,
-                                name=f.name,
-                                parent_id=parent_id,
-                                folder_class=f.folder_class,
-                                total_count=f.total_count or 0,
-                                unread_count=f.unread_count or 0,
-                                child_folder_count=f.child_folder_count or 0
-                            ))
+
+                            result_list.append(
+                                FolderDetailItem(
+                                    id=f.id,
+                                    changekey=f.changekey,
+                                    name=f.name,
+                                    parent_id=parent_id,
+                                    folder_class=f.folder_class,
+                                    total_count=f.total_count or 0,
+                                    unread_count=f.unread_count or 0,
+                                    child_folder_count=f.child_folder_count or 0,
+                                )
+                            )
                         except Exception as e:
                             logger.warning(f"Error processing folder {f.name}: {e}")
                             continue
-                            
+
                     return result_list
 
                 loop = asyncio.get_running_loop()
                 folders = await loop.run_in_executor(None, folder_ops)
-                
+
                 await ExchangeMailLog.create(
                     api_key_id=api_key_id,
                     account_id=account_id,
@@ -988,7 +983,6 @@ class EmailService:
                     "success": True,
                     "folders": folders,
                 }
-                
 
         except Exception as e:
             logger.error(f"获取所有文件夹失败: {e}")
@@ -1001,15 +995,16 @@ class EmailService:
     async def list_folders(
         self,
         account_id: int,
-        api_key_id: Optional[int] = None,
+        api_key_id: int | None = None,
     ) -> dict:
         """
         获取文件夹列表 (Legacy for backward compatibility)
         """
         try:
             from app.schemas.exchange import FolderItem
-            
+
             async with get_exchange_connection(account_id) as conn:
+
                 def folder_ops():
                     f_list = []
                     # 添加常用文件夹
@@ -1020,32 +1015,34 @@ class EmailService:
                         ("TRASH", conn.account.trash),
                     ]:
                         try:
-                            f_list.append(FolderItem(
-                                name=name,
-                                total_count=folder.total_count or 0,
-                                unread_count=folder.unread_count or 0,
-                            ))
+                            f_list.append(
+                                FolderItem(
+                                    name=name,
+                                    total_count=folder.total_count or 0,
+                                    unread_count=folder.unread_count or 0,
+                                )
+                            )
                         except Exception:
                             pass
                     return f_list
 
                 loop = asyncio.get_running_loop()
                 folders = await loop.run_in_executor(None, folder_ops)
-                
+
                 # 记录日志
                 await ExchangeMailLog.create(
                     api_key_id=api_key_id,
                     account_id=account_id,
                     action="folders",
                     status="success",
-                    request_ip=None, 
+                    request_ip=None,
                 )
 
                 return {
                     "success": True,
                     "folders": folders,
                 }
-                
+
         except Exception as e:
             logger.error(f"获取文件夹列表失败: {e}")
             return {
@@ -1057,79 +1054,79 @@ class EmailService:
     async def sync_emails(
         self,
         request,  # Type: EmailSyncRequest
-        api_key_id: Optional[int] = None,
-        request_ip: Optional[str] = None,
+        api_key_id: int | None = None,
+        request_ip: str | None = None,
     ) -> dict:
         """
         同步邮件
         """
         try:
-            from app.schemas.exchange import EmailSyncItem, EmailItem
             from app.models.exchange import ExchangeMailLog
-            
+
             async with get_exchange_connection(request.account_id) as conn:
+
                 def sync_ops():
                     folder = _resolve_folder(conn.account, request.folder)
-                    
+
                     # 执行同步 (Blocking)
                     # max_changes_returned controls page size
                     try:
-                        changes = list(folder.sync_items(
-                            sync_state=request.sync_state,
-                            max_changes_returned=request.limit,
-                            only_fields=request.only_fields,
-                        ))
+                        changes = list(
+                            folder.sync_items(
+                                sync_state=request.sync_state,
+                                max_changes_returned=request.limit,
+                                only_fields=request.only_fields,
+                            )
+                        )
                     except (binascii.Error, gzip.BadGzipFile, ErrorInvalidSyncStateData, ValueError) as e:
                         # 捕获 sync_state 反序列化错误
                         # 如果 sync_state 无效（例如被截断、编码错误），记录日志并抛出更友好的错误
                         # 有时客户端传递的 Base64 字符串可能包含空格而不是加号，尝试修复（虽然 requests 通常处理）
                         # 但如果仍然失败，则视为状态过期或无效
-                        logger.error(f"Sync state processing error: {e}. State prefix: {str(request.sync_state)[:20] if request.sync_state else 'None'}")
-                        
+                        logger.error(
+                            f"Sync state processing error: {e}. State prefix: {str(request.sync_state)[:20] if request.sync_state else 'None'}"
+                        )
+
                         # 可以选择抛出特定异常，或者在这里决定如何处理
                         # 如果是同步状态错误，通常意味着客户端需要重置 sync_state (即传 None 进行全量同步)
                         # 这里我们抛出一个ValueError，外层会捕获并返回错误信息
                         raise ValueError(f"Invalid sync_state: {str(e)}")
-                    
+
                     # 获取新的 sync_state
                     new_sync_state = folder.item_sync_state
-                    
+
                     result_items = []
                     for change_type, item in changes:
                         # change_type: 'create', 'update', 'delete', 'read_flag_change'
-                        
+
                         # Ensure item_id is extracted as a string
                         item_id = None
                         target_item = item
-                        
+
                         # Handle tuple case (e.g. read_flag_change yields (ItemId, is_read))
-                        if isinstance(item, (list, tuple)) and len(item) > 0:
+                        if isinstance(item, list | tuple) and len(item) > 0:
                             target_item = item[0]
-                            
-                        if hasattr(target_item, 'id'):
-                             item_id = target_item.id
-                        elif hasattr(target_item, 'item_id') and hasattr(target_item.item_id, 'id'):
-                             item_id = target_item.item_id.id
+
+                        if hasattr(target_item, "id"):
+                            item_id = target_item.id
+                        elif hasattr(target_item, "item_id") and hasattr(target_item.item_id, "id"):
+                            item_id = target_item.item_id.id
                         else:
-                             # Fallback
-                             item_id = str(target_item)
-                             
+                            # Fallback
+                            item_id = str(target_item)
+
                         # Force string conversion to avoid ItemId objects
                         if item_id is not None:
                             item_id = str(item_id)
-                        
-                        sync_item = {
-                            "change_type": change_type,
-                            "id": item_id,
-                            "item": None
-                        }
-                        
+
+                        sync_item = {"change_type": change_type, "id": item_id, "item": None}
+
                         # 如果是 create 或 update，item 是 Message 对象
                         # 如果是 delete 或 read_flag_change，item 是 ItemId (或类似包含ID的对象)
-                        if change_type in ('create', 'update'):
+                        if change_type in ("create", "update"):
                             # 转换为 EmailItem
                             received_time = None
-                            if hasattr(item, 'datetime_received') and item.datetime_received:
+                            if hasattr(item, "datetime_received") and item.datetime_received:
                                 received_time = datetime(
                                     item.datetime_received.year,
                                     item.datetime_received.month,
@@ -1138,23 +1135,23 @@ class EmailService:
                                     item.datetime_received.minute,
                                     item.datetime_received.second,
                                 )
-                            
+
                             sync_item["item"] = {
                                 "id": item_id,
-                                "subject": item.subject if hasattr(item, 'subject') else None,
-                                "sender": str(item.sender) if hasattr(item, 'sender') and item.sender else None,
+                                "subject": item.subject if hasattr(item, "subject") else None,
+                                "sender": str(item.sender) if hasattr(item, "sender") and item.sender else None,
                                 "received_time": received_time,
-                                "is_read": item.is_read if hasattr(item, 'is_read') else False,
-                                "has_attachments": item.has_attachments if hasattr(item, 'has_attachments') else False,
+                                "is_read": item.is_read if hasattr(item, "is_read") else False,
+                                "has_attachments": item.has_attachments if hasattr(item, "has_attachments") else False,
                             }
-                        
+
                         result_items.append(sync_item)
-                        
+
                     return new_sync_state, result_items
 
                 loop = asyncio.get_running_loop()
                 new_state, items = await loop.run_in_executor(None, sync_ops)
-                
+
                 # 记录审计日志
                 await ExchangeMailLog.create(
                     api_key_id=api_key_id,
@@ -1163,18 +1160,18 @@ class EmailService:
                     status="success",
                     request_ip=request_ip,
                 )
-                
+
                 return {
                     "success": True,
                     "sync_state": new_state,
                     "items": items,
                 }
-                
+
         except Exception as e:
             logger.error(f"同步邮件失败: {e}")
             return {
                 "success": False,
-                "sync_state": request.sync_state, # Return old state on error? Or just fail.
+                "sync_state": request.sync_state,  # Return old state on error? Or just fail.
                 "items": [],
                 "message": str(e),
             }
@@ -1199,10 +1196,12 @@ async def recover_pending_emails():
                 await redis.enqueue_job("send_email_task", log.id)
                 recovered += 1
             else:
-                log.update_from_dict({
-                    "status": "failed",
-                    "error_message": "No request_body; pre-ARQ entry cannot be retried",
-                })
+                log.update_from_dict(
+                    {
+                        "status": "failed",
+                        "error_message": "No request_body; pre-ARQ entry cannot be retried",
+                    }
+                )
                 await log.save()
                 failed += 1
         logger.info("Email recovery: {} re-enqueued, {} marked failed", recovered, failed)

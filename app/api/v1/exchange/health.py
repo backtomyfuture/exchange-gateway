@@ -2,8 +2,6 @@
 Exchange 服务健康检查 API
 """
 
-from typing import Optional
-
 from fastapi import APIRouter
 
 from app.log import logger
@@ -60,8 +58,9 @@ async def detailed_health_check():
     - 各账户连接状态
     """
     try:
-        from app.models.exchange import ExchangeAccount, ExchangeApiKey, ExchangeMailLog
         from datetime import datetime, timedelta
+
+        from app.models.exchange import ExchangeAccount, ExchangeApiKey, ExchangeMailLog
 
         # 连接池状态
         pool = get_connection_pool()
@@ -108,7 +107,7 @@ async def detailed_health_check():
 
 @router.post("/warmup", summary="预热连接池")
 async def warmup_connection_pool(
-    account_id: Optional[int] = None,
+    account_id: int | None = None,
     min_connections: int = 2,
 ):
     """

@@ -1,11 +1,12 @@
 """
 Exchange API 密钥管理路由
 """
+
 from fastapi import APIRouter, Depends, Query
 
 from app.core.dependency import AuthControl, DependPermission
 from app.models import User
-from app.schemas.base import Success, Fail
+from app.schemas.base import Fail, Success
 from app.schemas.exchange import ApiKeyCreate
 from app.services.exchange import get_account_service
 
@@ -27,7 +28,7 @@ async def list_api_keys(
         page=page,
         page_size=page_size,
     )
-    
+
     if result["success"]:
         return Success(data=result["items"], total=result["total"])
     else:
@@ -41,7 +42,7 @@ async def create_api_key(
 ):
     """
     创建新的API密钥
-    
+
     **注意：密钥只会显示一次，请妥善保存！**
     """
     service = get_account_service()
@@ -49,7 +50,7 @@ async def create_api_key(
         data=data,
         owner_id=current_user.id,
     )
-    
+
     if result["success"]:
         return Success(msg=result["message"], data=result.get("data"))
     else:
@@ -69,7 +70,7 @@ async def revoke_api_key(
         key_id=key_id,
         owner_id=current_user.id,
     )
-    
+
     if result["success"]:
         return Success(msg=result["message"])
     else:
@@ -89,7 +90,7 @@ async def delete_api_key(
         key_id=key_id,
         owner_id=current_user.id,
     )
-    
+
     if result["success"]:
         return Success(msg=result["message"])
     else:
@@ -107,7 +108,7 @@ async def get_usage_stats(
     result = await service.get_usage_stats(
         owner_id=current_user.id,
     )
-    
+
     if result["success"]:
         return Success(data=result["stats"])
     else:
@@ -133,7 +134,7 @@ async def list_mail_logs(
         action=action,
         status=status,
     )
-    
+
     if result["success"]:
         return Success(data=result["items"], total=result["total"])
     else:

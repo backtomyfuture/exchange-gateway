@@ -19,11 +19,11 @@ class ApiController(CRUDBase[Api, ApiCreate, ApiUpdate]):
             # 只更新有鉴权的API (包括装饰器依赖和参数注入依赖)
             if isinstance(route, APIRoute):
                 has_deps = len(route.dependencies) > 0 or (
-                    hasattr(route, 'dependant') and len(route.dependant.dependencies) > 0
+                    hasattr(route, "dependant") and len(route.dependant.dependencies) > 0
                 )
                 if has_deps:
                     all_api_list.append((list(route.methods)[0], route.path_format))
-        
+
         delete_api = []
         for api in await Api.all():
             if (api.method, api.path) not in all_api_list:
@@ -36,7 +36,7 @@ class ApiController(CRUDBase[Api, ApiCreate, ApiUpdate]):
         for route in app.routes:
             if isinstance(route, APIRoute):
                 has_deps = len(route.dependencies) > 0 or (
-                    hasattr(route, 'dependant') and len(route.dependant.dependencies) > 0
+                    hasattr(route, "dependant") and len(route.dependant.dependencies) > 0
                 )
                 if has_deps:
                     method = list(route.methods)[0]
@@ -45,7 +45,9 @@ class ApiController(CRUDBase[Api, ApiCreate, ApiUpdate]):
                     tags = list(route.tags)[0]
                     api_obj = await Api.filter(method=method, path=path).first()
                     if api_obj:
-                        await api_obj.update_from_dict(dict(method=method, path=path, summary=summary, tags=tags)).save()
+                        await api_obj.update_from_dict(
+                            dict(method=method, path=path, summary=summary, tags=tags)
+                        ).save()
                     else:
                         logger.debug(f"API Created {method} {path}")
                         await Api.create(**dict(method=method, path=path, summary=summary, tags=tags))

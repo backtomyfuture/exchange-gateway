@@ -1,7 +1,9 @@
-import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
-from app.services.exchange.email_service import EmailService
 import base64
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from app.services.exchange.email_service import EmailService
 
 
 @pytest.fixture
@@ -27,8 +29,6 @@ def mock_classes():
 
 @pytest.mark.asyncio
 async def test_get_email_with_attachments(email_service, mock_exchange_connection, mock_classes):
-    mock_file_cls = mock_classes
-
     # 1. Setup Mock Item with Attachments
     mock_item = MagicMock()
     mock_item.id = "test_id"
@@ -69,8 +69,8 @@ async def test_get_email_with_attachments(email_service, mock_exchange_connectio
     # So `email_service.FileAttachment` refers to the Mock.
     # So we just need `att1` to be an instance of that Mock.
 
-    mock_FileAttachment = mock_classes
-    att1 = mock_FileAttachment()  # Instance of the mock class
+    mock_file_attachment = mock_classes
+    att1 = mock_file_attachment()  # Instance of the mock class
     att1.name = "image.png"
     att1.content_type = "image/png"
     att1.size = 1234
@@ -79,7 +79,7 @@ async def test_get_email_with_attachments(email_service, mock_exchange_connectio
     att1.is_inline = True
 
     # Mock Attachment 2: Regular File
-    att2 = mock_FileAttachment()
+    att2 = mock_file_attachment()
     att2.name = "doc.pdf"
     att2.content_type = "application/pdf"
     att2.size = 5678

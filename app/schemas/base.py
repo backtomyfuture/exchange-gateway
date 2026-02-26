@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 from fastapi.responses import JSONResponse
 
@@ -7,8 +7,8 @@ class Success(JSONResponse):
     def __init__(
         self,
         code: int = 200,
-        msg: Optional[str] = "OK",
-        data: Optional[Any] = None,
+        msg: str | None = "OK",
+        data: Any | None = None,
         **kwargs,
     ):
         content = {"code": code, "msg": msg, "data": data}
@@ -20,8 +20,8 @@ class Fail(JSONResponse):
     def __init__(
         self,
         code: int = 400,
-        msg: Optional[str] = None,
-        data: Optional[Any] = None,
+        msg: str | None = None,
+        data: Any | None = None,
         **kwargs,
     ):
         content = {"code": code, "msg": msg, "data": data}
@@ -33,8 +33,8 @@ class SuccessExtra(JSONResponse):
     def __init__(
         self,
         code: int = 200,
-        msg: Optional[str] = None,
-        data: Optional[Any] = None,
+        msg: str | None = None,
+        data: Any | None = None,
         total: int = 0,
         page: int = 1,
         page_size: int = 20,

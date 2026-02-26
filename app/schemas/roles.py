@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -8,11 +7,11 @@ class BaseRole(BaseModel):
     id: int
     name: str
     desc: str = ""
-    users: Optional[list] = []
-    menus: Optional[list] = []
-    apis: Optional[list] = []
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
+    users: list | None = []
+    menus: list | None = []
+    apis: list | None = []
+    created_at: datetime | None
+    updated_at: datetime | None
 
 
 class RoleCreate(BaseModel):

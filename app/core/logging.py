@@ -12,10 +12,12 @@ Existing code using loguru via `from app.log import logger` continues to work.
 The request_id context is shared via structlog.contextvars and can be injected
 into loguru via `from structlog.contextvars import get_contextvars`.
 """
+
 import logging
 import sys
 
 import structlog
+
 from app.settings import settings
 from app.settings.config import ENV
 
@@ -23,7 +25,7 @@ from app.settings.config import ENV
 def configure_logging() -> None:
     """Configure structlog. Call once at application startup."""
     shared_processors = [
-        structlog.contextvars.merge_contextvars,   # Injects request_id automatically
+        structlog.contextvars.merge_contextvars,  # Injects request_id automatically
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
@@ -36,7 +38,8 @@ def configure_logging() -> None:
         renderer = structlog.dev.ConsoleRenderer(colors=True)
 
     structlog.configure(
-        processors=shared_processors + [
+        processors=shared_processors
+        + [
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         wrapper_class=structlog.stdlib.BoundLogger,

@@ -5,11 +5,13 @@ States:
   OPEN      → calls immediately raise CircuitOpenError
   HALF_OPEN → probe call; success→CLOSED, failure→OPEN
 """
+
 import asyncio
 import time
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Coroutine, Tuple, Type
+from typing import Any
 
 
 class CircuitState(Enum):
@@ -51,7 +53,7 @@ class CircuitBreaker:
         self,
         func: Callable[..., Coroutine[Any, Any, Any]],
         *args: Any,
-        retryable_exceptions: Tuple[Type[Exception], ...] = (Exception,),
+        retryable_exceptions: tuple[type[Exception], ...] = (Exception,),
         **kwargs: Any,
     ) -> Any:
         async with self._lock:

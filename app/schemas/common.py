@@ -7,8 +7,9 @@ Usage:
         total = await Item.all().count()
         return Page(items=items, total=total, page=params.page, size=params.size)
 """
+
 import math
-from typing import Generic, List, TypeVar
+from typing import Generic, TypeVar
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -17,6 +18,7 @@ T = TypeVar("T")
 
 class PageParams(BaseModel):
     """Standardized pagination query parameters."""
+
     page: int = Field(1, ge=1, description="Page number (1-indexed)")
     size: int = Field(20, ge=1, description="Items per page (max 100, clamped)")
 
@@ -41,7 +43,8 @@ class PageParams(BaseModel):
 
 class Page(BaseModel, Generic[T]):
     """Paginated response wrapper."""
-    items: List[T]
+
+    items: list[T]
     total: int
     page: int
     size: int

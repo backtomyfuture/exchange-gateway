@@ -22,20 +22,16 @@ def test_no_hardcoded_passwords():
             for item in env:
                 key_val = str(item)
                 if "PASSWORD" in key_val.upper() or "SECRET" in key_val.upper():
-                    assert (
-                        "${" in key_val
-                        or "_FILE" in key_val.upper()
-                        or "/run/secrets" in key_val
-                    ), f"Service '{name}' may have a hardcoded secret in: {key_val}"
+                    assert "${" in key_val or "_FILE" in key_val.upper() or "/run/secrets" in key_val, (
+                        f"Service '{name}' may have a hardcoded secret in: {key_val}"
+                    )
         elif isinstance(env, dict):
             for k, v in env.items():
                 if "PASSWORD" in k.upper() or "SECRET" in k.upper():
                     v_str = str(v)
-                    assert (
-                        "${" in v_str
-                        or "_FILE" in k.upper()
-                        or "/run/secrets" in v_str
-                    ), f"Service '{name}' may have a hardcoded secret: {k}={v}"
+                    assert "${" in v_str or "_FILE" in k.upper() or "/run/secrets" in v_str, (
+                        f"Service '{name}' may have a hardcoded secret: {k}={v}"
+                    )
 
 
 def test_workers_have_healthcheck():

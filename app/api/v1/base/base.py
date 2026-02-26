@@ -1,15 +1,16 @@
 # import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter
 
 from app.controllers.user import user_controller
 from app.core.ctx import CTX_USER_ID
 from app.core.dependency import DependAuth
+
 # from app.log.log import logger
 from app.models.admin import Api, Menu, Role, User
 from app.schemas.base import Fail, Success
-from app.schemas.login import *
+from app.schemas.login import CredentialsSchema, JWTOut, JWTPayload
 from app.schemas.users import UpdatePassword
 from app.settings import settings
 from app.utils.jwt_utils import create_access_token
@@ -23,7 +24,7 @@ async def login_access_token(credentials: CredentialsSchema):
     user: User = await user_controller.authenticate(credentials)
     await user_controller.update_last_login(user.id)
     access_token_expires = timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
-    expire = datetime.now(timezone.utc) + access_token_expires
+    expire = datetime.now(UTC) + access_token_expires
 
     data = JWTOut(
         access_token=create_access_token(
@@ -52,7 +53,7 @@ async def get_userinfo():
 async def get_user_menu():
     user_id = CTX_USER_ID.get()
     user_obj = await User.filter(id=user_id).first()
-    
+
     menus: list[Menu] = []
     if user_obj.is_superuser:
         menus = await Menu.all()
@@ -62,7 +63,7 @@ async def get_user_menu():
             menu = await role_obj.menus
             menus.extend(menu)
         menus = list(set(menus))
-        
+
     # 收集所有需要显示的父菜单ID（包括子菜单对应的父菜单）
     parent_menu_ids = set()
     for menu in menus:
@@ -75,26 +76,25 @@ async def get_user_menu():
 
     # 获取所有需要显示的父菜单对象
     parent_menus: list[Menu] = await Menu.filter(id__in=list(parent_menu_ids), parent_id=0)
-    
+
     res = []
     for parent_menu in parent_menus:
         parent_menu_dict = await parent_menu.to_dict()
         parent_menu_dict["children"] = []
         # 强制显示父菜单，即使只有一个子菜单
         parent_menu_dict["alwaysShow"] = True
-        
+
         for menu in menus:
             if menu.parent_id == parent_menu.id:
                 parent_menu_dict["children"].append(await menu.to_dict())
-        
+
         # 只有当父菜单有可见的子菜单时才添加到结果中
         # 或者它是顶级菜单，并且不仅是个容器 (Component不是Layout)
         if parent_menu_dict["children"] or (
-            parent_menu.id in [m.id for m in menus if m.parent_id == 0] 
-            and parent_menu.component != "Layout"
+            parent_menu.id in [m.id for m in menus if m.parent_id == 0] and parent_menu.component != "Layout"
         ):
             res.append(parent_menu_dict)
-            
+
     return Success(data=res)
 
 
