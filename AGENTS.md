@@ -51,12 +51,14 @@ Pre-existing lint warnings exist in `crypto.py` (docstring whitespace) and `logg
 
 ### Testing
 
+Tests use SQLite in-memory DB (no MySQL/Redis needed). Run locally without Docker:
+
 ```bash
-# Run all working unit tests inside the app container:
-docker compose exec -e DEV_MODE=true app pytest tests/unit/test_migration_lock.py tests/unit/test_mask_sensitive.py tests/unit/test_redis_rate_limiter.py tests/unit/test_async_helpers.py tests/unit/test_compose_structure.py tests/unit/test_exceptions.py tests/unit/test_crypto.py tests/unit/test_init_menus.py tests/unit/test_circuit_breaker.py tests/unit/test_email_tasks.py tests/unit/test_webhook_schema.py tests/api/test_health.py -v
+export ENV=dev DEV_MODE=true PYTHONPATH=/workspace
+python3 -m pytest tests/ -v --ignore=tests/integration/ --ignore=tests/manual/ --tb=short
 ```
 
-**Known issue**: Some test files (`test_retry.py`, `test_pagination.py`, `test_webhook_listener_refactored.py`, etc.) fail at collection time due to a missing `app/services/__init__.py`. This is a pre-existing codebase issue.
+Docker is **not required** for running the test suite.
 
 ### Gotchas
 
