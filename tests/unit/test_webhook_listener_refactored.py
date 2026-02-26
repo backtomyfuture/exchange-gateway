@@ -39,18 +39,23 @@ class TestAsyncAccountListener:
     @pytest.mark.asyncio
     async def test_listener_start_stop(self, listener):
         """测试监听器启动和停止"""
-        # Mock _connect_and_listen 避免实际连接
-        with patch.object(listener, "_connect_and_listen", new_callable=AsyncMock):
-            # 启动监听器
+
+        async def _fake_listen():
+            try:
+                await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                return
+
+        with patch.object(listener, "_connect_and_listen", side_effect=_fake_listen):
             await listener.start()
             assert listener._task is not None
             assert not listener._task.done()
 
-            # 等待一下让任务启动
             await asyncio.sleep(0.1)
 
-            # 停止监听器
             await listener.stop()
+            # Give cancelled task time to finish
+            await asyncio.sleep(0.1)
             assert listener._task is None or listener._task.done()
 
     @pytest.mark.asyncio
