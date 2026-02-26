@@ -18,10 +18,10 @@ class CredentialCrypto:
     - nonce 为 12 字节随机数
     - 主密钥从环境变量或配置中获取
     """
-    
+
     NONCE_SIZE = 12  # GCM 推荐 nonce 大小
     KEY_SIZE = 32    # AES-256 需要 32 字节密钥
-    
+
     def __init__(self, encryption_key: str):
         """
         初始化加密器
@@ -31,16 +31,16 @@ class CredentialCrypto:
         """
         if not encryption_key:
             raise ValueError("加密密钥不能为空")
-        
+
         try:
             self._key = base64.b64decode(encryption_key)
             if len(self._key) != self.KEY_SIZE:
                 raise ValueError(f"密钥长度必须为 {self.KEY_SIZE} 字节")
         except Exception as e:
             raise ValueError(f"无效的加密密钥格式: {e}")
-        
+
         self._aesgcm = AESGCM(self._key)
-    
+
     def encrypt(self, plaintext: str) -> str:
         """
         加密明文
@@ -53,13 +53,13 @@ class CredentialCrypto:
         """
         if not plaintext:
             raise ValueError("明文不能为空")
-        
+
         nonce = os.urandom(self.NONCE_SIZE)
         ciphertext = self._aesgcm.encrypt(nonce, plaintext.encode('utf-8'), None)
         # 将 nonce 和密文拼接后进行 base64 编码
         encrypted_data = base64.b64encode(nonce + ciphertext).decode('utf-8')
         return encrypted_data
-    
+
     def decrypt(self, encrypted_data: str) -> str:
         """
         解密密文
@@ -72,7 +72,7 @@ class CredentialCrypto:
         """
         if not encrypted_data:
             raise ValueError("加密数据不能为空")
-        
+
         try:
             data = base64.b64decode(encrypted_data)
             nonce = data[:self.NONCE_SIZE]

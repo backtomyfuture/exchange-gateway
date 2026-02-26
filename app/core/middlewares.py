@@ -1,9 +1,10 @@
 import json
 import re
 import uuid
+from collections.abc import AsyncGenerator
 from contextvars import ContextVar
 from datetime import datetime
-from typing import Any, AsyncGenerator
+from typing import Any
 
 import structlog
 from fastapi import FastAPI
