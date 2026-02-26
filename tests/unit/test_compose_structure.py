@@ -1,11 +1,15 @@
 import pathlib
 
+import pytest
 import yaml
+
+_COMPOSE_PATH = pathlib.Path(__file__).resolve().parents[2] / "docker-compose.yml"
 
 
 def _load_compose():
-    path = pathlib.Path(__file__).resolve().parents[2] / "docker-compose.yml"
-    with open(path) as f:
+    if not _COMPOSE_PATH.exists():
+        pytest.skip("docker-compose.yml not found (running inside container?)")
+    with open(_COMPOSE_PATH) as f:
         return yaml.safe_load(f)
 
 
