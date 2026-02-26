@@ -2,15 +2,16 @@
 测试加密工具模块
 """
 
-import pytest
 import base64
 from unittest.mock import patch
 
+import pytest
+
 from app.utils.crypto import (
     CredentialCrypto,
-    get_crypto,
-    generate_encryption_key,
     generate_api_key,
+    generate_encryption_key,
+    get_crypto,
     hash_api_key,
 )
 
@@ -221,3 +222,21 @@ class TestCryptoIntegration:
 
         # 验证不同账户的加密结果不同
         assert len(set(encrypted_passwords.values())) == len(passwords)
+
+
+class TestVerifyApiKeyHash:
+    """测试 API 密钥哈希验证"""
+
+    def test_verify_api_key_hash_match(self):
+        from app.utils.crypto import verify_api_key_hash
+
+        api_key = "my-test-api-key"
+        hashed = hash_api_key(api_key)
+        assert verify_api_key_hash(api_key, hashed) is True
+
+    def test_verify_api_key_hash_mismatch(self):
+        from app.utils.crypto import verify_api_key_hash
+
+        api_key = "my-test-api-key"
+        hashed = hash_api_key(api_key)
+        assert verify_api_key_hash("wrong-key", hashed) is False
