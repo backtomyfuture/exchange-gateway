@@ -3,16 +3,15 @@
 """
 
 import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
 
 from app.services.exchange.webhook_listener import (
     AsyncAccountListener,
-    WebhookManager,
-    WebhookDispatcher,
     CircuitBreaker,
-    CircuitBreakerOpen,
-    event_queue,
+    WebhookDispatcher,
+    WebhookManager,
 )
 
 
@@ -40,18 +39,23 @@ class TestAsyncAccountListener:
     @pytest.mark.asyncio
     async def test_listener_start_stop(self, listener):
         """测试监听器启动和停止"""
-        # Mock _connect_and_listen 避免实际连接
-        with patch.object(listener, "_connect_and_listen", new_callable=AsyncMock) as mock_connect:
-            # 启动监听器
+
+        async def _fake_listen():
+            try:
+                await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                return
+
+        with patch.object(listener, "_connect_and_listen", side_effect=_fake_listen):
             await listener.start()
             assert listener._task is not None
             assert not listener._task.done()
 
-            # 等待一下让任务启动
             await asyncio.sleep(0.1)
 
-            # 停止监听器
             await listener.stop()
+            # Give cancelled task time to finish
+            await asyncio.sleep(0.1)
             assert listener._task is None or listener._task.done()
 
     @pytest.mark.asyncio
@@ -125,17 +129,18 @@ class TestWebhookDispatcher:
     @pytest.mark.asyncio
     async def test_dispatch_enqueues_arq_job(self, dispatcher, mock_webhook):
         """dispatch() persists a WebhookDelivery and enqueues an ARQ job."""
-        from unittest.mock import AsyncMock as AM
         event_data = {"event_type": "NewMailEvent", "account_id": 1}
 
         mock_delivery = MagicMock()
         mock_delivery.id = 42
         mock_pool = MagicMock()
-        mock_pool.enqueue_job = AM()
+        mock_pool.enqueue_job = AsyncMock()
 
-        with patch("app.services.exchange.webhook_listener.WebhookDelivery") as mock_delivery_cls, \
-             patch("app.services.exchange.webhook_listener.get_arq_pool", return_value=mock_pool):
-            mock_delivery_cls.create = AM(return_value=mock_delivery)
+        with (
+            patch("app.services.exchange.webhook_listener.WebhookDelivery") as mock_delivery_cls,
+            patch("app.services.exchange.webhook_listener.get_arq_pool", return_value=mock_pool),
+        ):
+            mock_delivery_cls.create = AsyncMock(return_value=mock_delivery)
             await dispatcher.dispatch(mock_webhook, event_data)
 
         mock_delivery_cls.create.assert_called_once()

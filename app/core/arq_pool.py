@@ -2,7 +2,9 @@
 ARQ Redis connection pool — app-level singleton for job enqueueing.
 Initialize via init_arq_pool() in app lifespan startup.
 """
+
 from arq.connections import ArqRedis, RedisSettings, create_pool
+
 from app.settings import settings
 
 _arq_pool: ArqRedis | None = None

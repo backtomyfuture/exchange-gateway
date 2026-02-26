@@ -3,6 +3,7 @@
 HTTP metrics: handled automatically by prometheus_fastapi_instrumentator.
 Exchange-specific metrics: defined here, incremented manually.
 """
+
 from prometheus_client import Counter, Gauge, Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
 

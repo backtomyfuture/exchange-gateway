@@ -11,21 +11,21 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
-      
+
       - name: Install dependencies
         run: |
           pip install ruff
-      
+
       - name: Run Ruff
         run: |
           ruff check app/ tests/ scripts/
-      
+
       - name: Check formatting
         run: |
           ruff format --check app/ tests/ scripts/

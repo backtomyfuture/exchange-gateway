@@ -1,41 +1,38 @@
 """
 Exchange email API routes.
 """
+
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.encoders import jsonable_encoder
 
 from app.core.api_key_auth import (
-    ApiKeyAuth,
-    DependApiKeySend,
-    DependApiKeyReceive,
-    DependApiKeySearch,
     DependApiKeyDelete,
-    DependApiKeyFolders,
     DependApiKeyDrafts,
-    DependApiKeySync,
-    DependApiKeyRead,
-    get_client_ip,
-    DependApiKeyReply,
+    DependApiKeyFolders,
     DependApiKeyForward,
+    DependApiKeyRead,
+    DependApiKeyReceive,
+    DependApiKeyReply,
+    DependApiKeySearch,
+    DependApiKeySend,
+    DependApiKeySync,
+    get_client_ip,
     verify_account_access,
 )
+from app.core.dependency import DependPermission
 from app.models.exchange import ExchangeApiKey
-from app.schemas.base import Success, Fail
+from app.schemas.base import Fail, Success
 from app.schemas.exchange import (
-    EmailSendRequest,
     EmailDraftRequest,
-    EmailSendResponse,
-    EmailListRequest,
-    EmailSearchRequest,
-    TemplateSendRequest,
-    EmailSyncRequest,
-    EmailReplyRequest,
     EmailForwardRequest,
+    EmailListRequest,
+    EmailReplyRequest,
+    EmailSearchRequest,
+    EmailSendRequest,
+    EmailSyncRequest,
+    TemplateSendRequest,
 )
 from app.services.exchange import get_email_service, get_template_service
-
-from app.core.dependency import AuthControl, DependPermission
-
 
 router = APIRouter(dependencies=[DependPermission])
 

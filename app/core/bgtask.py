@@ -26,6 +26,7 @@ class BgTasks:
         else:
             # 无上下文时（如 WebSocket），直接异步执行
             import asyncio
+
             if asyncio.iscoroutinefunction(func):
                 asyncio.create_task(func(*args, **kwargs))
             else:

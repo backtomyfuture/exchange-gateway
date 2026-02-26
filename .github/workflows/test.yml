@@ -4,12 +4,11 @@ on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     services:
       mysql:
         image: mysql:8.0
@@ -23,30 +22,32 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
-      
+
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-      
+          pip install fakeredis
+
       - name: Run tests
         env:
+          DEV_MODE: "true"
           DATABASE_URL: mysql://root:test@127.0.0.1:3306/exchange
-          EXCHANGE_ENCRYPTION_KEY: test-encryption-key-for-ci-32byt
         run: |
-          pytest tests/ -v --ignore=tests/integration/
-      
+          pytest tests/ -v --ignore=tests/integration/ --ignore=tests/manual/
+
       - name: Upload coverage
         uses: codecov/codecov-action@v4
+        if: always()
         with:
           files: ./coverage.xml
           flags: unittests

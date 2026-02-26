@@ -8,47 +8,67 @@ from fastapi.responses import JSONResponse
 from tortoise.exceptions import DoesNotExist, IntegrityError
 
 
-class SettingNotFound(Exception):
+class SettingNotFoundError(Exception):
     pass
 
 
-async def DoesNotExistHandle(req: Request, exc: DoesNotExist) -> JSONResponse:
+SettingNotFound = SettingNotFoundError
+
+
+async def does_not_exist_handle(req: Request, exc: DoesNotExist) -> JSONResponse:
     content = dict(
         code=404,
-        msg=f"Object has not found, exc: {exc}, query_params: {req.query_params}",
+        msg="请求的资源不存在",
     )
     return JSONResponse(content=content, status_code=404)
 
 
-async def IntegrityHandle(_: Request, exc: IntegrityError) -> JSONResponse:
+DoesNotExistHandle = does_not_exist_handle
+
+
+async def integrity_handle(_: Request, exc: IntegrityError) -> JSONResponse:
     content = dict(
         code=500,
-        msg=f"IntegrityError，{exc}",
+        msg="数据完整性错误，请检查是否存在重复或关联数据冲突",
     )
     return JSONResponse(content=content, status_code=500)
 
 
-async def HttpExcHandle(_: Request, exc: HTTPException) -> JSONResponse:
+IntegrityHandle = integrity_handle
+
+
+async def http_exc_handle(_: Request, exc: HTTPException) -> JSONResponse:
     content = dict(code=exc.status_code, msg=exc.detail, data=None)
     return JSONResponse(content=content, status_code=exc.status_code)
 
 
-async def RequestValidationHandle(_: Request, exc: RequestValidationError) -> JSONResponse:
-    content = dict(code=422, msg=f"RequestValidationError, {exc}")
+HttpExcHandle = http_exc_handle
+
+
+async def request_validation_handle(_: Request, exc: RequestValidationError) -> JSONResponse:
+    content = dict(code=422, msg="请求参数验证失败", data=exc.errors())
     return JSONResponse(content=content, status_code=422)
 
 
-async def ResponseValidationHandle(_: Request, exc: ResponseValidationError) -> JSONResponse:
-    content = dict(code=500, msg=f"ResponseValidationError, {exc}")
+RequestValidationHandle = request_validation_handle
+
+
+async def response_validation_handle(_: Request, exc: ResponseValidationError) -> JSONResponse:
+    content = dict(code=500, msg="服务端响应数据异常")
     return JSONResponse(content=content, status_code=500)
+
+
+ResponseValidationHandle = response_validation_handle
 
 
 # =============================================================================
 # Domain Exception Hierarchy
 # =============================================================================
 
-class EWSGatewayException(Exception):
+
+class EWSGatewayError(Exception):
     """Base class for all exchange-gateway domain exceptions."""
+
     error_code: str = "INTERNAL_ERROR"
     http_status: int = 500
 
@@ -57,47 +77,65 @@ class EWSGatewayException(Exception):
         super().__init__(message)
 
 
-class AccountNotFoundError(EWSGatewayException):
+EWSGatewayException = EWSGatewayError
+
+
+class AccountNotFoundError(EWSGatewayError):
     error_code = "ACCOUNT_NOT_FOUND"
     http_status = 404
 
 
-class AccountDisabledError(EWSGatewayException):
+class AccountDisabledError(EWSGatewayError):
     error_code = "ACCOUNT_DISABLED"
     http_status = 403
 
 
-class InvalidCredentialsError(EWSGatewayException):
+class InvalidCredentialsError(EWSGatewayError):
     error_code = "INVALID_CREDENTIALS"
     http_status = 401
 
 
-class ExchangeConnectionError(EWSGatewayException):
+class ExchangeConnectionError(EWSGatewayError):
     error_code = "EXCHANGE_CONNECTION_ERROR"
     http_status = 503
 
 
-class ExchangeTimeoutError(EWSGatewayException):
+class ExchangeTimeoutError(EWSGatewayError):
     error_code = "EXCHANGE_TIMEOUT"
     http_status = 504
 
 
-class ExchangeAuthError(EWSGatewayException):
+class AttachmentTooLargeError(EWSGatewayError):
+    error_code = "ATTACHMENT_TOO_LARGE"
+    http_status = 413
+
+
+class ExchangeAuthError(EWSGatewayError):
     error_code = "EXCHANGE_AUTH_FAILED"
     http_status = 502
 
 
-class TemplateRenderError(EWSGatewayException):
+class TemplateRenderError(EWSGatewayError):
     error_code = "TEMPLATE_RENDER_ERROR"
     http_status = 422
 
 
-class GatewayCircuitOpenError(EWSGatewayException):
+class GatewayCircuitOpenError(EWSGatewayError):
     error_code = "CIRCUIT_OPEN"
     http_status = 503
 
 
-async def ews_exception_handler(request: Request, exc: EWSGatewayException) -> JSONResponse:
+class WebhookDeliveryError(EWSGatewayError):
+    error_code = "WEBHOOK_DELIVERY_ERROR"
+    http_status = 502
+
+
+class EmailNotFoundError(EWSGatewayError):
+    error_code = "EMAIL_NOT_FOUND"
+    http_status = 404
+
+
+async def ews_exception_handler(request: Request, exc: EWSGatewayError) -> JSONResponse:
     request_id = request.headers.get("X-Request-ID", "")
     return JSONResponse(
         status_code=exc.http_status,

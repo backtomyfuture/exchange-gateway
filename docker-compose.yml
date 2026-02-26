@@ -1,12 +1,26 @@
 # Exchange Gateway - Docker Compose Configuration
-# 
-# Quick Start:
-#   cp .env.example .env
-#   # Edit .env: set EXCHANGE_SERVER, EXCHANGE_DOMAIN, EXCHANGE_EMAIL_SUFFIX
-#   docker compose up -d
 #
-# ENV=dev (default): 零配置开发模式, HTTP, 自动生成密钥
-# ENV=prod: 生产模式, 需要配置安全密钥和 SSL 证书
+# Quick Start:
+#   ./scripts/init-secrets.sh       # Generate secrets (first time only)
+#   cp .env.example .env && edit    # Configure Exchange server
+#   docker compose --profile local-db --profile local-redis up -d
+#
+# With external MySQL/Redis:
+#   docker compose up -d            # Only app, workers, nginx
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
+secrets:
+  secret_key:
+    file: ./secrets/secret_key
+  exchange_encryption_key:
+    file: ./secrets/exchange_encryption_key
+  db_password:
+    file: ./secrets/db_password
 
 services:
   # ===========================================
@@ -16,14 +30,17 @@ services:
     image: mysql:8.0
     container_name: exchange-gateway-mysql
     restart: unless-stopped
+    profiles:
+      - local-db
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --default-authentication-plugin=mysql_native_password
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root123}
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_password
       MYSQL_DATABASE: ${DB_NAME:-exchange_gateway}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-root123}
+    secrets:
+      - db_password
     ports:
       - "13306:3306"
     volumes:
@@ -36,6 +53,7 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+    logging: *default-logging
 
   # ===========================================
   # FastAPI Application
@@ -51,23 +69,27 @@ services:
       - ENV=${ENV:-dev}
       - PORT=${BACKEND_PORT:-8000}
       - DATABASE_URL=${DATABASE_URL:-mysql://root:root123@mysql:3306/exchange_gateway}
-      - SECRET_KEY=${SECRET_KEY}
+      - SECRET_KEY_FILE=/run/secrets/secret_key
       - WORKERS=${WORKERS:-2}
-      # Exchange mail service configuration (no defaults - must be configured)
       - EXCHANGE_SERVER=${EXCHANGE_SERVER}
       - EXCHANGE_DOMAIN=${EXCHANGE_DOMAIN}
       - EXCHANGE_EMAIL_SUFFIX=${EXCHANGE_EMAIL_SUFFIX}
-      - EXCHANGE_ENCRYPTION_KEY=${EXCHANGE_ENCRYPTION_KEY}
+      - EXCHANGE_ENCRYPTION_KEY_FILE=/run/secrets/exchange_encryption_key
       - WEBHOOK_ALLOW_PRIVATE_URLS=true
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - LOGS_ROOT=/var/log/app
+    secrets:
+      - secret_key
+      - exchange_encryption_key
     ports:
       - "18001:${BACKEND_PORT:-8000}"
     depends_on:
       mysql:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
     volumes:
       - ./app:/opt/app/app:ro
       - ./.docker-data/logs:/var/log/app
@@ -78,6 +100,14 @@ services:
     networks:
       - backend
       - frontend
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+        reservations:
+          memory: 512M
+    logging: *default-logging
 
   # ===========================================
   # Webhook Listener Worker
@@ -94,14 +124,18 @@ services:
       - ENV=${ENV:-dev}
       - PORT=${BACKEND_PORT:-8000}
       - DATABASE_URL=${DATABASE_URL:-mysql://root:root123@mysql:3306/exchange_gateway}
-      - SECRET_KEY=${SECRET_KEY}
-      - EXCHANGE_ENCRYPTION_KEY=${EXCHANGE_ENCRYPTION_KEY}
+      - SECRET_KEY_FILE=/run/secrets/secret_key
+      - EXCHANGE_ENCRYPTION_KEY_FILE=/run/secrets/exchange_encryption_key
       - WEBHOOK_ALLOW_PRIVATE_URLS=true
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - LOGS_ROOT=/var/log/app
+    secrets:
+      - secret_key
+      - exchange_encryption_key
     depends_on:
       mysql:
         condition: service_healthy
+        required: false
       app:
         condition: service_started
     volumes:
@@ -109,9 +143,19 @@ services:
       - ./migrations:/opt/app/migrations
       - ./.docker-data/logs:/var/log/app
     healthcheck:
-      disable: true
+      test: ["CMD-SHELL", "python -c \"import time; t=float(open('/tmp/worker_heartbeat').read()); assert time.time()-t<60\" 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks:
       - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+    logging: *default-logging
 
   # ===========================================
   # ARQ Task Queue Worker
@@ -128,26 +172,40 @@ services:
     environment:
       - ENV=${ENV:-dev}
       - DATABASE_URL=${DATABASE_URL:-mysql://root:root123@mysql:3306/exchange_gateway}
-      - SECRET_KEY=${SECRET_KEY}
-      - EXCHANGE_ENCRYPTION_KEY=${EXCHANGE_ENCRYPTION_KEY}
+      - SECRET_KEY_FILE=/run/secrets/secret_key
+      - EXCHANGE_ENCRYPTION_KEY_FILE=/run/secrets/exchange_encryption_key
       - EXCHANGE_SERVER=${EXCHANGE_SERVER}
       - EXCHANGE_DOMAIN=${EXCHANGE_DOMAIN}
       - EXCHANGE_EMAIL_SUFFIX=${EXCHANGE_EMAIL_SUFFIX}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - LOGS_ROOT=/var/log/app
-      - LOGS_ROOT=/var/log/app
+    secrets:
+      - secret_key
+      - exchange_encryption_key
     depends_on:
       mysql:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
     volumes:
       - ./app:/opt/app/app:ro
       - ./.docker-data/logs:/var/log/app
     healthcheck:
-      disable: true
+      test: ["CMD-SHELL", "python -c \"import time; t=float(open('/tmp/worker_heartbeat').read()); assert time.time()-t<60\" 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks:
       - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+    logging: *default-logging
 
   # ===========================================
   # Redis (Task Queue + Rate Limiting)
@@ -156,6 +214,8 @@ services:
     image: redis:7-alpine
     container_name: exchange-gateway-redis
     restart: unless-stopped
+    profiles:
+      - local-redis
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -163,6 +223,7 @@ services:
       retries: 5
     networks:
       - backend
+    logging: *default-logging
 
   # ===========================================
   # Nginx Reverse Proxy
@@ -186,6 +247,7 @@ services:
         condition: service_started
     networks:
       - frontend
+    logging: *default-logging
 
 # ===========================================
 # Networks

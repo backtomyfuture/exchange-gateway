@@ -2,37 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
-
-### Added
-- GitHub Actions CI/CD workflows (test, lint)
-- Apache 2.0 license
-- Comprehensive documentation (getting-started, deployment, webhook)
-- Security: AES-256-GCM password encryption
-- API Key authentication with granular permissions
-- Webhook event subscription support
-
-### Changed
-- Project renamed to exchange-gateway
-- Migrated from GitLab to GitHub
-
-### Removed
-- Debug and test scripts
-- Temporary files and build artifacts
-
-## [0.1.0] - 2026-02-15
+## [1.0.0] - 2026-02-26
 
 ### Added
-- Initial open source release
-- FastAPI-based REST API for Exchange/EWS
-- Vue3 admin dashboard
-- Email operations: send, receive, search, reply, forward
-- Template management
-- Webhook subscription and event delivery
-- Docker Compose deployment
-
-### Known Issues
-- None at this time
+- RESTful API for Exchange/EWS email operations (send, receive, search, reply, forward)
+- Email templates with Jinja2 variable substitution
+- Webhook subscriptions for Exchange streaming events (NewMail, Created, Modified, Deleted)
+- Admin dashboard (Vue 3 + Naive UI) for account and API key management
+- API Key authentication with SHA-256 hashing and per-key rate limiting
+- AES-256-GCM password encryption for Exchange account credentials
+- Redis distributed rate limiter (sliding window via ZSET)
+- Redis distributed migration lock for multi-worker safety
+- Structured logging via structlog (JSON in production, colored console in dev)
+- Prometheus metrics endpoint (`/metrics`)
+- ARQ-based async task queue for email sending and webhook delivery
+- Docker Compose deployment with Docker Secrets support
+- Audit logging middleware with sensitive data masking
+- Role-based access control (RBAC) for dashboard users
+- Health check endpoints (`/health`, `/health/live`, `/health/ready`)
+- Connection pooling for Exchange server connections
+- Circuit breaker pattern for Exchange connectivity

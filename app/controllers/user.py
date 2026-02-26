@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
 from fastapi.exceptions import HTTPException
 
@@ -16,10 +16,10 @@ class UserController(CRUDBase[User, UserCreate, UserUpdate]):
     def __init__(self):
         super().__init__(model=User)
 
-    async def get_by_email(self, email: str) -> Optional[User]:
+    async def get_by_email(self, email: str) -> User | None:
         return await self.model.filter(email=email).first()
 
-    async def get_by_username(self, username: str) -> Optional[User]:
+    async def get_by_username(self, username: str) -> User | None:
         return await self.model.filter(username=username).first()
 
     async def create_user(self, obj_in: UserCreate) -> User:
@@ -43,9 +43,7 @@ class UserController(CRUDBase[User, UserCreate, UserUpdate]):
             raise HTTPException(status_code=400, detail="用户已被禁用")
         return user
 
-
-
-    async def update_roles(self, user: User, role_ids: List[int]) -> None:
+    async def update_roles(self, user: User, role_ids: list[int]) -> None:
         await user.roles.clear()
         for role_id in role_ids:
             role_obj = await role_controller.get(id=role_id)
@@ -57,20 +55,13 @@ class UserController(CRUDBase[User, UserCreate, UserUpdate]):
         """
         # 1. Check Exchange Accounts
         from app.models.exchange import ExchangeAccount, ExchangeApiKey
+
         if await ExchangeAccount.filter(owner_id=id).exists():
-            raise HTTPException(
-                status_code=400, 
-                detail="该用户名下仍有 Exchange 账户，请先转移 or 删除这些资源"
-            )
-            
+            raise HTTPException(status_code=400, detail="该用户名下仍有 Exchange 账户，请先转移 or 删除这些资源")
+
         # 2. Check API Keys
         if await ExchangeApiKey.filter(owner_id=id).exists():
-             raise HTTPException(
-                status_code=400, 
-                detail="该用户名下仍有 API 密钥，请先处理"
-            )
-            
-
+            raise HTTPException(status_code=400, detail="该用户名下仍有 API 密钥，请先处理")
 
         await super().remove(id)
 

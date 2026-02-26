@@ -2,11 +2,12 @@
 Exchange 账户管理 API 路由
 管理后台用户管理自己的邮箱账户
 """
+
 from fastapi import APIRouter, Depends, Query
 
 from app.core.dependency import AuthControl, DependPermission
 from app.models import User
-from app.schemas.base import Success, Fail
+from app.schemas.base import Fail, Success
 from app.schemas.exchange import AccountCreate, AccountUpdate
 from app.services.exchange import get_account_service
 
@@ -24,11 +25,12 @@ async def get_dashboard_data(
     result = await service.get_dashboard_data(
         owner_id=current_user.id,
     )
-    
+
     if result["success"]:
         return Success(data=result["data"])
     else:
         return Fail(code=500, msg=result.get("message", "获取失败"))
+
 
 @router.get("/list", summary="获取账户列表")
 async def list_accounts(
@@ -45,7 +47,7 @@ async def list_accounts(
         page=page,
         page_size=page_size,
     )
-    
+
     if result["success"]:
         return Success(data=result["items"], total=result["total"])
     else:
@@ -65,7 +67,7 @@ async def create_account(
         data=data,
         owner_id=current_user.id,
     )
-    
+
     if result["success"]:
         return Success(msg=result["message"], data=result.get("data"))
     else:
@@ -85,7 +87,7 @@ async def update_account(
         data=data,
         owner_id=current_user.id,
     )
-    
+
     if result["success"]:
         return Success(msg=result["message"], data=result.get("data"))
     else:
@@ -105,7 +107,7 @@ async def delete_account(
         account_id=account_id,
         owner_id=current_user.id,
     )
-    
+
     if result["success"]:
         return Success(msg=result["message"])
     else:
@@ -125,7 +127,7 @@ async def test_account(
         account_id=account_id,
         owner_id=current_user.id,
     )
-    
+
     if result["success"]:
         return Success(msg=result["message"])
     else:

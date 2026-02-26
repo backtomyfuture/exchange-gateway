@@ -1,5 +1,4 @@
 import os
-import typing
 from urllib.parse import urlparse
 
 from pydantic import model_validator
@@ -39,7 +38,7 @@ def get_secret(secret_name: str, default: str = "") -> str:
     file_env = f"{secret_name}_FILE"
     if file_path := os.getenv(file_env):
         try:
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 return f.read().strip()
         except FileNotFoundError:
             pass
@@ -68,10 +67,10 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Exchange Gateway"
     APP_DESCRIPTION: str = "Enterprise Exchange/EWS Gateway - REST API for Microsoft Exchange Server"
 
-    CORS_ORIGINS: typing.List = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+    CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
     CORS_ALLOW_CREDENTIALS: bool = True
-    CORS_ALLOW_METHODS: typing.List = ["*"]
-    CORS_ALLOW_HEADERS: typing.List = ["*"]
+    CORS_ALLOW_METHODS: list = ["*"]
+    CORS_ALLOW_HEADERS: list = ["*"]
 
     # ENV=dev 时自动启用 DEBUG，否则默认关闭
     DEBUG: bool = DEV_MODE or os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")

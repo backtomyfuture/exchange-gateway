@@ -4,7 +4,7 @@ from fastapi import APIRouter, Query
 
 from app.controllers.menu import menu_controller
 from app.schemas.base import Fail, Success, SuccessExtra
-from app.schemas.menus import *
+from app.schemas.menus import MenuCreate, MenuUpdate
 
 logger = logging.getLogger(__name__)
 

@@ -1,5 +1,5 @@
-from typing import List, Optional
-from pydantic import BaseModel, HttpUrl, Field, field_validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator
+
 from app.settings import settings
 
 _WEBHOOK_EVENT_ALIASES = {
@@ -15,11 +15,11 @@ _WEBHOOK_EVENT_ALIASES = {
 }
 
 
-def _normalize_events(events: List[str]) -> List[str]:
+def _normalize_events(events: list[str]) -> list[str]:
     if not events:
         return ["NewMailEvent"]
 
-    normalized: List[str] = []
+    normalized: list[str] = []
     for event in events:
         event_name = str(event).strip()
         if not event_name:
@@ -40,9 +40,9 @@ def _normalize_events(events: List[str]) -> List[str]:
 
 class WebhookBase(BaseModel):
     url: HttpUrl = Field(..., description="回调地址")
-    events: List[str] = Field(default=["NewMailEvent"], description="订阅事件白名单")
-    folders: List[str] = Field(default=["*"], description="监听文件夹列表（当前版本不限制）")
-    remark: Optional[str] = Field(None, description="备注")
+    events: list[str] = Field(default=["NewMailEvent"], description="订阅事件白名单")
+    folders: list[str] = Field(default=["*"], description="监听文件夹列表（当前版本不限制）")
+    remark: str | None = Field(None, description="备注")
     is_active: bool = Field(True, description="是否启用")
 
     @field_validator("url")
@@ -88,7 +88,7 @@ class WebhookBase(BaseModel):
 
     @field_validator("events")
     @classmethod
-    def validate_events(cls, v: List[str]) -> List[str]:
+    def validate_events(cls, v: list[str]) -> list[str]:
         return _normalize_events(v)
 
 
@@ -98,16 +98,16 @@ class WebhookCreate(WebhookBase):
 
 
 class WebhookUpdate(BaseModel):
-    url: Optional[HttpUrl] = Field(None, description="回调地址")
-    events: Optional[List[str]] = Field(None, description="订阅事件列表")
-    folders: Optional[List[str]] = Field(None, description="监听文件夹列表")
-    secret: Optional[str] = Field(None, min_length=8, description="签名密钥")
-    is_active: Optional[bool] = Field(None, description="是否启用")
-    remark: Optional[str] = Field(None, description="备注")
+    url: HttpUrl | None = Field(None, description="回调地址")
+    events: list[str] | None = Field(None, description="订阅事件列表")
+    folders: list[str] | None = Field(None, description="监听文件夹列表")
+    secret: str | None = Field(None, min_length=8, description="签名密钥")
+    is_active: bool | None = Field(None, description="是否启用")
+    remark: str | None = Field(None, description="备注")
 
     @field_validator("events")
     @classmethod
-    def validate_events(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+    def validate_events(cls, v: list[str] | None) -> list[str] | None:
         if v is None:
             return None
         return _normalize_events(v)

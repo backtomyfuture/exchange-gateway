@@ -1,10 +1,12 @@
 import json
 import re
 import uuid
+from collections.abc import AsyncGenerator
 from contextvars import ContextVar
 from datetime import datetime
-from typing import Any, AsyncGenerator
+from typing import Any
 
+import structlog
 from fastapi import FastAPI
 from fastapi.responses import Response
 from fastapi.routing import APIRoute
@@ -12,13 +14,49 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app.core.dependency import AuthControl
 from app.models.admin import AuditLog, User
 
 from .bgtask import BgTasks
 
 # Request ID 上下文变量
 CTX_REQUEST_ID: ContextVar[str] = ContextVar("request_id", default="")
+
+_audit_logger = structlog.get_logger("audit")
+
+# 敏感字段集合，用于审计日志脱敏
+_SENSITIVE_KEYS = frozenset(
+    {
+        "password",
+        "secret",
+        "token",
+        "key",
+        "api_key",
+        "x_api_key",
+        "encrypted_password",
+        "secret_key",
+        "encryption_key",
+        "authorization",
+        "credential",
+        "credentials",
+    }
+)
+
+
+def _mask_sensitive(data: dict) -> dict:
+    """递归脱敏字典中的敏感字段。"""
+    if not isinstance(data, dict):
+        return data
+    masked = {}
+    for k, v in data.items():
+        if k.lower() in _SENSITIVE_KEYS:
+            masked[k] = "***"
+        elif isinstance(v, dict):
+            masked[k] = _mask_sensitive(v)
+        elif isinstance(v, list):
+            masked[k] = [_mask_sensitive(i) if isinstance(i, dict) else i for i in v]
+        else:
+            masked[k] = v
+    return masked
 
 
 class SimpleBaseMiddleware:
@@ -48,8 +86,8 @@ class RequestIDMiddleware(SimpleBaseMiddleware):
     Request ID 中间件
     为每个请求生成唯一标识，便于日志追踪和问题排查
     """
+
     async def before_request(self, request: Request):
-        import structlog
         # 优先使用客户端传入的 Request ID（如通过网关传入）
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
         CTX_REQUEST_ID.set(request_id)
@@ -57,7 +95,6 @@ class RequestIDMiddleware(SimpleBaseMiddleware):
         structlog.contextvars.bind_contextvars(request_id=request_id)
 
     async def after_request(self, request: Request):
-        import structlog
         structlog.contextvars.clear_contextvars()
 
 
@@ -91,9 +128,8 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
             except json.JSONDecodeError:
                 try:
                     body = await request.form()
-                    # args.update(body)
                     for k, v in body.items():
-                        if hasattr(v, "filename"):  # 文件上传行为
+                        if hasattr(v, "filename"):
                             args[k] = v.filename
                         elif isinstance(v, list) and v and hasattr(v[0], "filename"):
                             args[k] = [file.filename for file in v]
@@ -102,10 +138,9 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
                 except Exception:
                     pass
 
-        return args
+        return _mask_sensitive(args)
 
     async def get_response_body(self, request: Request, response: Response) -> Any:
-        # 检查Content-Length
         content_length = response.headers.get("content-length")
         if content_length and int(content_length) > self.max_body_size:
             return {"code": 0, "msg": "Response too large to log", "data": None}
@@ -125,7 +160,6 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
         if any(request.url.path.startswith(path) for path in self.audit_log_paths):
             try:
                 data = self.lenient_json(body)
-                # 只保留基本信息，去除详细的响应内容
                 if isinstance(data, dict):
                     data.pop("response_body", None)
                     if "data" in data and isinstance(data["data"], list):
@@ -138,7 +172,7 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
         return self.lenient_json(body)
 
     def lenient_json(self, v: Any) -> Any:
-        if isinstance(v, (str, bytes)):
+        if isinstance(v, str | bytes):
             try:
                 return json.loads(v)
             except (ValueError, TypeError):
@@ -150,15 +184,13 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
             yield item
 
     async def get_request_log(self, request: Request, response: Response) -> dict:
-        """
-        根据request和response对象获取对应的日志记录数据
-        """
+        """根据request和response对象获取对应的日志记录数据"""
         data: dict = {
             "path": request.url.path,
             "status": response.status_code,
             "method": request.method,
             "module": "",
-            "summary": request.url.path,  # 默认使用路径作为摘要
+            "summary": request.url.path,
         }
         # 路由信息
         app: FastAPI = request.app
@@ -170,17 +202,21 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
             ):
                 data["module"] = ",".join(route.tags) if route.tags else ""
                 data["summary"] = route.summary or route.path_format or ""
-        # 获取用户信息
+        # 从 request.state 获取已认证的用户信息，避免重复解析 token
+        user_id = 0
+        username = ""
         try:
-            token = request.headers.get("token")
-            user_obj = None
-            if token:
-                user_obj: User = await AuthControl.is_authed(token)
-            data["user_id"] = user_obj.id if user_obj else 0
-            data["username"] = user_obj.username if user_obj else ""
+            from app.core.ctx import CTX_USER_ID
+
+            user_id = CTX_USER_ID.get(0)
+            if user_id:
+                user_obj = await User.filter(id=user_id).first()
+                if user_obj:
+                    username = user_obj.username
         except Exception:
-            data["user_id"] = 0
-            data["username"] = ""
+            pass
+        data["user_id"] = user_id
+        data["username"] = username
         return data
 
     async def before_request(self, request: Request):
@@ -200,8 +236,7 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
             try:
                 await AuditLog.create(**data)
             except Exception as e:
-                # 即使审计日志写入失败，也不应该影响正常业务流程
-                print(f"FAILED_TO_LOG: {str(e)}")
+                _audit_logger.warning("Failed to write audit log", error=str(e))
 
         return response
 

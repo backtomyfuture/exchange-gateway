@@ -1,6 +1,8 @@
 import asyncio
+
 import pytest
-from app.services.exchange.circuit_breaker import CircuitBreaker, CircuitState, CircuitOpenError
+
+from app.services.exchange.circuit_breaker import CircuitBreaker, CircuitOpenError, CircuitState
 
 
 @pytest.mark.asyncio

@@ -4,18 +4,27 @@ Exchange Webhook Listener - 重构版
 """
 
 import asyncio
+import hashlib
+import hmac
+import json
 import logging
 import signal
 import sys
 import time
-import json
-import hmac
-import hashlib
-from typing import Dict, List, Optional, Any, ClassVar
 from datetime import datetime
+from typing import Optional
 
 import httpx
+from exchangelib.protocol import BaseProtocol
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 from tortoise import Tortoise
+
+from app.core.arq_pool import get_arq_pool
+from app.models.exchange import ExchangeAccount
+from app.models.webhook import WebhookDelivery, WebhookSubscription
+from app.services.exchange.circuit_breaker import CircuitBreaker, CircuitOpenError
+from app.settings import settings
+from app.utils.exchange_adapter import LegacySSLAdapter
 
 # Init logging
 logging.basicConfig(
@@ -25,23 +34,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger("webhook-worker")
 
-from app.settings import settings
-from app.core.arq_pool import get_arq_pool
-from app.models.exchange import ExchangeAccount
-from app.models.webhook import WebhookDelivery, WebhookSubscription
-
-from exchangelib.protocol import BaseProtocol
-from app.utils.exchange_adapter import LegacySSLAdapter
-
 # 使用自定义 Adapter 解决 SSLEOFError 和主机名不匹配
 BaseProtocol.HTTP_ADAPTER_CLS = LegacySSLAdapter
 
 # Global flag for shutdown
 SHUTDOWN = False
-
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-
-from app.services.exchange.circuit_breaker import CircuitBreaker, CircuitState, CircuitOpenError
 
 # Backward-compat alias for existing imports
 CircuitBreakerOpen = CircuitOpenError
@@ -55,7 +52,7 @@ class WebhookDispatcher:
 
     def __init__(self):
         # 每个 webhook URL 一个断路器
-        self.circuit_breakers: Dict[str, CircuitBreaker] = {}
+        self.circuit_breakers: dict[str, CircuitBreaker] = {}
 
     def _get_circuit_breaker(self, url: str) -> CircuitBreaker:
         """获取或创建断路器"""
@@ -102,12 +99,15 @@ class WebhookDispatcher:
             await redis.enqueue_job("deliver_webhook_task", delivery.id)
             logger.info(
                 "Webhook dispatch: created delivery %d for subscription %d event %s",
-                delivery.id, webhook.id, event_type,
+                delivery.id,
+                webhook.id,
+                event_type,
             )
         except Exception as exc:
             logger.error(
                 "Failed to enqueue webhook delivery for subscription %d: %s",
-                webhook.id, exc,
+                webhook.id,
+                exc,
             )
 
     async def _do_dispatch(self, webhook: WebhookSubscription, event_data: dict):
@@ -165,7 +165,7 @@ class AsyncAccountListener:
         self.account_email = config.get("email", "")
         self.event_types = config.get("event_types", ["NewMailEvent"])
         self._stop_event = asyncio.Event()
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
 
         # 断路器保护 EWS 连接
         self.connection_circuit = CircuitBreaker(failure_threshold=3, recovery_timeout=30, half_open_max_calls=1)
@@ -190,7 +190,7 @@ class AsyncAccountListener:
         # 给任务一些时间优雅退出
         try:
             await asyncio.wait_for(self._task, timeout=5.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"Listener task for account {self.account_id} did not stop gracefully, cancelling...")
             self._task.cancel()
             try:
@@ -247,7 +247,7 @@ class AsyncAccountListener:
         创建 EWS 账户连接（同步方法，在线程中执行）
         """
         import urllib3
-        from exchangelib import Credentials, Configuration, Account, DELEGATE, NTLM
+        from exchangelib import DELEGATE, NTLM, Account, Configuration, Credentials
         from exchangelib.protocol import FaultTolerance
 
         urllib3.disable_warnings()
@@ -286,7 +286,7 @@ class AsyncAccountListener:
         drains the queue on the event-loop side.
         """
         event_buffer: asyncio.Queue = asyncio.Queue()
-        _SENTINEL = object()
+        _sentinel = object()
 
         def _run_blocking_stream():
             """Runs entirely in one thread – no cross-thread generator access."""
@@ -301,24 +301,20 @@ class AsyncAccountListener:
                             break
                         for event in getattr(notification, "events", []) or []:
                             # put_nowait is safe here because Queue has no maxsize limit
-                            asyncio.run_coroutine_threadsafe(
-                                event_buffer.put(event), loop
-                            ).result()
+                            asyncio.run_coroutine_threadsafe(event_buffer.put(event), loop).result()
             except Exception as e:
                 logger.error(f"[{self.account_id}] Streaming error: {e}")
                 raise
             finally:
-                asyncio.run_coroutine_threadsafe(
-                    event_buffer.put(_SENTINEL), loop
-                ).result()
+                asyncio.run_coroutine_threadsafe(event_buffer.put(_sentinel), loop).result()
 
-        loop = asyncio.get_event_loop()
+        asyncio.get_event_loop()
         stream_future = asyncio.get_event_loop().run_in_executor(None, _run_blocking_stream)
 
         try:
             while True:
                 item = await event_buffer.get()
-                if item is _SENTINEL:
+                if item is _sentinel:
                     break
                 yield item
         finally:
@@ -328,7 +324,7 @@ class AsyncAccountListener:
             except Exception:
                 pass
 
-    def _process_event(self, event) -> Optional[dict]:
+    def _process_event(self, event) -> dict | None:
         """处理单个事件"""
         try:
             event_cls = event.__class__.__name__
@@ -372,8 +368,6 @@ class AsyncAccountListener:
         if hasattr(event, "id") and hasattr(event, "changekey"):
             return {"id": event.id, "changekey": event.changekey}
 
-        import inspect
-
         for key in dir(event):
             if key.startswith("_"):
                 continue
@@ -388,7 +382,7 @@ class AsyncAccountListener:
         """序列化值"""
         if val is None:
             return None
-        if isinstance(val, (str, int, float, bool)):
+        if isinstance(val, str | int | float | bool):
             return val
         if hasattr(val, "isoformat"):
             return val.isoformat()
@@ -424,8 +418,8 @@ class WebhookManager:
 
     def __init__(self):
         WebhookManager._instance = self
-        self.listeners: Dict[int, AsyncAccountListener] = {}
-        self.account_subscriptions: Dict[int, List[WebhookSubscription]] = {}
+        self.listeners: dict[int, AsyncAccountListener] = {}
+        self.account_subscriptions: dict[int, list[WebhookSubscription]] = {}
         self.dispatcher = WebhookDispatcher()
 
     @classmethod
@@ -433,14 +427,14 @@ class WebhookManager:
         return cls._instance
 
     @classmethod
-    def _normalize_event_name(cls, event_name: str) -> Optional[str]:
+    def _normalize_event_name(cls, event_name: str) -> str | None:
         value = str(event_name).strip()
         if not value:
             return None
         return cls.EVENT_NAME_MAP.get(value.lower())
 
     @classmethod
-    def _resolve_exchange_event_types(cls, subscriptions: List[WebhookSubscription]) -> List[str]:
+    def _resolve_exchange_event_types(cls, subscriptions: list[WebhookSubscription]) -> list[str]:
         """
         将 webhook 配置的事件名称映射为 exchangelib 期望的 Event 类型。
         """
@@ -487,7 +481,7 @@ class WebhookManager:
         subs = await WebhookSubscription.filter(is_active=True).all()
 
         # Group by account
-        new_account_map: Dict[int, List[WebhookSubscription]] = {}
+        new_account_map: dict[int, list[WebhookSubscription]] = {}
         for sub in subs:
             if sub.account_id not in new_account_map:
                 new_account_map[sub.account_id] = []
@@ -505,7 +499,7 @@ class WebhookManager:
             if acc_id not in new_account_map:
                 await self._stop_listener(acc_id)
 
-    async def _start_listener(self, acc_id: int, subs: List[WebhookSubscription]):
+    async def _start_listener(self, acc_id: int, subs: list[WebhookSubscription]):
         """启动单个监听器"""
         acc = await ExchangeAccount.get_or_none(id=acc_id)
         if not acc:

@@ -1,13 +1,15 @@
 """
 Exchange API 模块
 """
+
 from fastapi import APIRouter
 
-from .emails import router as emails_router
 from .accounts import router as accounts_router
 from .api_keys import router as api_keys_router
-from .templates import router as templates_router
+from .contacts import router as contacts_router
+from .emails import router as emails_router
 from .health import router as health_router
+from .templates import router as templates_router
 
 exchange_router = APIRouter()
 
@@ -26,7 +28,5 @@ exchange_router.include_router(api_keys_router, prefix="/api-keys", tags=["Excha
 # 模板管理（使用 JWT 认证）
 exchange_router.include_router(templates_router, prefix="/templates", tags=["Exchange - 邮件模板"])
 
-from .contacts import router as contacts_router
 # 联系人查询（使用 API Key 认证）
 exchange_router.include_router(contacts_router, prefix="/contacts", tags=["Exchange - 通讯录"])
-

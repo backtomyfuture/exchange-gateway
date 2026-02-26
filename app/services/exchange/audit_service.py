@@ -2,8 +2,8 @@
 审计日志服务
 记录和查询管理操作日志
 """
+
 from datetime import datetime, timedelta
-from typing import Optional
 
 from app.log import logger
 from app.models.exchange import ExchangeAuditLog
@@ -14,24 +14,24 @@ class AuditService:
     审计日志服务
     提供日志记录和查询功能
     """
-    
+
     async def log(
         self,
         operator_id: int,
         action: str,
         resource_type: str,
-        resource_id: Optional[int] = None,
-        resource_name: Optional[str] = None,
-        details: Optional[dict] = None,
-        request_ip: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        operator_name: Optional[str] = None,
+        resource_id: int | None = None,
+        resource_name: str | None = None,
+        details: dict | None = None,
+        request_ip: str | None = None,
+        user_agent: str | None = None,
+        operator_name: str | None = None,
         status: str = "success",
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
     ) -> ExchangeAuditLog:
         """
         记录审计日志
-        
+
         Args:
             operator_id: 操作者ID
             action: 操作类型（create_account, delete_api_key 等）
@@ -44,7 +44,7 @@ class AuditService:
             operator_name: 操作者用户名
             status: 状态（success, failed）
             error_message: 错误信息
-            
+
         Returns:
             ExchangeAuditLog: 创建的日志记录
         """
@@ -62,29 +62,28 @@ class AuditService:
                 status=status,
                 error_message=error_message,
             )
-            
+
             logger.info(
-                f"审计日志: {action} {resource_type} "
-                f"(id={resource_id}, name={resource_name}) by user {operator_id}"
+                f"审计日志: {action} {resource_type} (id={resource_id}, name={resource_name}) by user {operator_id}"
             )
             return log_entry
-            
+
         except Exception as e:
             # 审计日志失败不应影响主业务
             logger.error(f"审计日志记录失败: {e}")
             raise
-    
+
     async def log_success(
         self,
         operator_id: int,
         action: str,
         resource_type: str,
-        resource_id: Optional[int] = None,
-        resource_name: Optional[str] = None,
-        details: Optional[dict] = None,
-        request_ip: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        operator_name: Optional[str] = None,
+        resource_id: int | None = None,
+        resource_name: str | None = None,
+        details: dict | None = None,
+        request_ip: str | None = None,
+        user_agent: str | None = None,
+        operator_name: str | None = None,
     ) -> ExchangeAuditLog:
         """记录成功的操作"""
         return await self.log(
@@ -99,19 +98,19 @@ class AuditService:
             operator_name=operator_name,
             status="success",
         )
-    
+
     async def log_failure(
         self,
         operator_id: int,
         action: str,
         resource_type: str,
         error_message: str,
-        resource_id: Optional[int] = None,
-        resource_name: Optional[str] = None,
-        details: Optional[dict] = None,
-        request_ip: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        operator_name: Optional[str] = None,
+        resource_id: int | None = None,
+        resource_name: str | None = None,
+        details: dict | None = None,
+        request_ip: str | None = None,
+        user_agent: str | None = None,
+        operator_name: str | None = None,
     ) -> ExchangeAuditLog:
         """记录失败的操作"""
         return await self.log(
@@ -127,27 +126,27 @@ class AuditService:
             status="failed",
             error_message=error_message,
         )
-    
+
     async def list_logs(
         self,
         page: int = 1,
         page_size: int = 20,
-        operator_id: Optional[int] = None,
-        action: Optional[str] = None,
-        resource_type: Optional[str] = None,
-        resource_id: Optional[int] = None,
-        status: Optional[str] = None,
-        date_from: Optional[datetime] = None,
-        date_to: Optional[datetime] = None,
+        operator_id: int | None = None,
+        action: str | None = None,
+        resource_type: str | None = None,
+        resource_id: int | None = None,
+        status: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> dict:
         """
         查询审计日志列表
-        
+
         Returns:
             dict: {"total": int, "items": list}
         """
         query = ExchangeAuditLog.all()
-        
+
         # 过滤条件
         if operator_id:
             query = query.filter(operator_id=operator_id)
@@ -163,14 +162,14 @@ class AuditService:
             query = query.filter(created_at__gte=date_from)
         if date_to:
             query = query.filter(created_at__lte=date_to)
-        
+
         # 总数
         total = await query.count()
-        
+
         # 分页
         offset = (page - 1) * page_size
         items = await query.order_by("-created_at").offset(offset).limit(page_size)
-        
+
         return {
             "total": total,
             "items": [
@@ -189,35 +188,33 @@ class AuditService:
                     "created_at": item.created_at,
                 }
                 for item in items
-            ]
+            ],
         }
-    
+
     async def get_recent_activity(
         self,
-        operator_id: Optional[int] = None,
+        operator_id: int | None = None,
         hours: int = 24,
         limit: int = 10,
     ) -> list:
         """
         获取最近活动
-        
+
         Args:
             operator_id: 可选，只获取指定用户的活动
             hours: 时间范围（小时）
             limit: 返回数量
-            
+
         Returns:
             list: 最近活动列表
         """
-        query = ExchangeAuditLog.filter(
-            created_at__gte=datetime.now() - timedelta(hours=hours)
-        )
-        
+        query = ExchangeAuditLog.filter(created_at__gte=datetime.now() - timedelta(hours=hours))
+
         if operator_id:
             query = query.filter(operator_id=operator_id)
-        
+
         items = await query.order_by("-created_at").limit(limit)
-        
+
         return [
             {
                 "id": item.id,
@@ -232,7 +229,7 @@ class AuditService:
 
 
 # 全局服务实例
-_audit_service: Optional[AuditService] = None
+_audit_service: AuditService | None = None
 
 
 def get_audit_service() -> AuditService:

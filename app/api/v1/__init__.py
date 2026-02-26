@@ -7,7 +7,7 @@ from .auditlog import auditlog_router
 from .base import base_router
 from .depts import depts_router
 from .exchange import exchange_router
-
+from .exchange.webhooks import router as webhooks_router
 from .menus import menus_router
 from .roles import roles_router
 from .users import users_router
@@ -24,8 +24,4 @@ v1_router.include_router(auditlog_router, prefix="/auditlog", dependencies=[Depe
 # Exchange 邮件服务（包含自己的认证机制：API Key + JWT）
 v1_router.include_router(exchange_router, prefix="/exchange")
 # Webhook 管理
-from .exchange.webhooks import router as webhooks_router
 v1_router.include_router(webhooks_router, prefix="/exchange/webhooks")
-
-
-

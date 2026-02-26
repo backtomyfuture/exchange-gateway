@@ -57,7 +57,7 @@ class Menu(BaseModel, TimestampMixin):
 
     class Meta:
         table = "menu"
-        unique_together = (("parent_id", "name"), )
+        unique_together = (("parent_id", "name"),)
 
 
 class Dept(BaseModel, TimestampMixin):
@@ -69,7 +69,7 @@ class Dept(BaseModel, TimestampMixin):
 
     class Meta:
         table = "dept"
-        unique_together = (("parent_id", "name"), )
+        unique_together = (("parent_id", "name"),)
 
 
 class DeptClosure(BaseModel, TimestampMixin):

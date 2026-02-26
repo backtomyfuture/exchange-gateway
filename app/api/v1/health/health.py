@@ -1,8 +1,11 @@
 """Enhanced health check: 200 (healthy) / 207 (degraded) / 503 (unhealthy)."""
+
 import time
+
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from tortoise import Tortoise
+
 from app.settings import settings
 
 router = APIRouter()
@@ -21,6 +24,7 @@ async def _check_database() -> dict:
 async def _check_redis() -> dict:
     try:
         from app.core.arq_pool import get_arq_pool
+
         start = time.monotonic()
         await get_arq_pool().ping()
         return {"status": "ok", "latency_ms": round((time.monotonic() - start) * 1000, 1)}
@@ -30,8 +34,9 @@ async def _check_redis() -> dict:
 
 async def _check_exchange_accounts() -> dict:
     try:
-        from app.services.exchange.connection_pool import get_connection_pool
         from app.services.exchange.circuit_breaker import CircuitState
+        from app.services.exchange.connection_pool import get_connection_pool
+
         breakers = get_connection_pool()._circuit_breakers
         open_ids = [aid for aid, cb in breakers.items() if cb.state == CircuitState.OPEN]
         return {
