@@ -3,25 +3,14 @@ API 密钥认证中间件
 用于第三方系统调用邮件接口的认证
 """
 
-from datetime import datetime
-from typing import Optional
+from datetime import UTC, datetime
 
 from fastapi import Header, HTTPException, Request
 
+from app.core.redis_rate_limiter import get_rate_limiter
 from app.log import logger
 from app.models.exchange import ExchangeApiKey
 from app.utils.crypto import hash_api_key
-
-# Use Redis rate limiter for distributed deployments
-try:
-    from app.core.redis_rate_limiter import get_rate_limiter
-
-    _rate_limiter = None  # Lazy initialization
-except ImportError:
-    # Fallback to in-memory rate limiter if Redis unavailable
-    from app.core.rate_limiter import get_rate_limiter as get_mem_rate_limiter
-
-    _rate_limiter = get_mem_rate_limiter()
 
 
 class ApiKeyAuth:
@@ -37,7 +26,7 @@ class ApiKeyAuth:
             ...
     """
 
-    def __init__(self, required_permissions: Optional[list[str]] = None, auto_error: bool = True):
+    def __init__(self, required_permissions: list[str] | None = None, auto_error: bool = True):
         """
         初始化认证器
 
@@ -51,11 +40,9 @@ class ApiKeyAuth:
     async def __call__(
         self,
         request: Request,
-        x_api_key: Optional[str] = Header(None, alias="X-Api-Key", description="API 密钥"),
-    ) -> Optional[ExchangeApiKey]:
-        """
-        验证 API 密钥
-        """
+        x_api_key: str | None = Header(None, alias="X-Api-Key", description="API 密钥"),
+    ) -> ExchangeApiKey | None:
+        """验证 API 密钥"""
         if not x_api_key:
             if self.auto_error:
                 raise HTTPException(status_code=401, detail="未提供 API 密钥")
@@ -81,12 +68,12 @@ class ApiKeyAuth:
 
             # 3. 检查过期时间
             if api_key.expires_at:
-                now = datetime.now()
-                # 如果数据库存的是带时区的时间，则将当前时间也转换为带时区
-                if api_key.expires_at.tzinfo:
-                    now = now.astimezone()
+                now = datetime.now(tz=UTC)
+                expires = api_key.expires_at
+                if expires.tzinfo is None:
+                    expires = expires.replace(tzinfo=UTC)
 
-                if api_key.expires_at < now:
+                if expires < now:
                     logger.warning(f"API 密钥已过期: {api_key.name}")
                     if self.auto_error:
                         raise HTTPException(status_code=401, detail="API 密钥已过期")
@@ -94,7 +81,7 @@ class ApiKeyAuth:
 
             # 4. 验证 IP 白名单
             if api_key.ip_whitelist:
-                client_ip = self._get_client_ip(request)
+                client_ip = get_client_ip(request)
                 if client_ip not in api_key.ip_whitelist:
                     logger.warning(f"IP 不在白名单中: {client_ip}, 密钥: {api_key.name}")
                     if self.auto_error:
@@ -111,19 +98,7 @@ class ApiKeyAuth:
                     return None
 
             # 6. 检查速率限制
-            # 使用懒加载获取 rate limiter
-            global _rate_limiter
-            if _rate_limiter is None:
-                try:
-                    from app.core.redis_rate_limiter import get_rate_limiter as get_redis_rate_limiter
-
-                    _rate_limiter = get_redis_rate_limiter()
-                except Exception:
-                    from app.core.rate_limiter import get_rate_limiter as get_mem_rate_limiter
-
-                    _rate_limiter = get_mem_rate_limiter()
-
-            rate_limiter = _rate_limiter
+            rate_limiter = get_rate_limiter()
             is_allowed, current_count, remaining = await rate_limiter.is_allowed(
                 key=f"api_key:{api_key.id}", limit=api_key.rate_limit, window_seconds=60
             )
@@ -142,10 +117,13 @@ class ApiKeyAuth:
                     )
                 return None
 
-            # 7. 更新使用信息
-            api_key.last_used_at = datetime.now()
-            api_key.usage_count += 1
-            await api_key.save()
+            # 7. 原子更新使用信息，避免并发计数丢失
+            from tortoise.expressions import F
+
+            await ExchangeApiKey.filter(id=api_key.id).update(
+                last_used_at=datetime.now(tz=UTC),
+                usage_count=F("usage_count") + 1,
+            )
 
             # 记录认证状态，供后续权限系统使用
             request.state.is_api_key_auth = True
@@ -160,21 +138,6 @@ class ApiKeyAuth:
             if self.auto_error:
                 raise HTTPException(status_code=500, detail="认证服务异常")
             return None
-
-    def _get_client_ip(self, request: Request) -> str:
-        """获取客户端 IP"""
-        # 优先使用代理头
-        forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            # 取第一个 IP（最原始的客户端）
-            return forwarded.split(",")[0].strip()
-
-        real_ip = request.headers.get("X-Real-IP")
-        if real_ip:
-            return real_ip
-
-        # 直接连接的 IP
-        return request.client.host if request.client else "unknown"
 
 
 def get_client_ip(request: Request) -> str:
@@ -217,16 +180,6 @@ def verify_account_access(api_key: ExchangeApiKey, account_id: int) -> None:
     An empty ``allowed_accounts`` list means the key has access to **all**
     accounts.  Use this helper in every route handler instead of repeating
     the same three-line check inline.
-
-    Usage::
-
-        @router.post("/send")
-        async def send_email(
-            data: EmailSendRequest,
-            api_key: ExchangeApiKey = Depends(DependApiKeySend),
-        ):
-            verify_account_access(api_key, data.account_id)
-            ...
     """
     if api_key.allowed_accounts and account_id not in api_key.allowed_accounts:
         raise HTTPException(status_code=403, detail="API key is not authorised for this account")

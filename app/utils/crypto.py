@@ -128,3 +128,20 @@ def hash_api_key(api_key: str) -> str:
     """
     import hashlib
     return hashlib.sha256(api_key.encode('utf-8')).hexdigest()
+
+
+def verify_api_key_hash(api_key: str, expected_hash: str) -> bool:
+    """
+    常量时间比较 API 密钥哈希，防止 timing attack。
+
+    Args:
+        api_key: 原始 API 密钥
+        expected_hash: 数据库中存储的哈希值
+
+    Returns:
+        是否匹配
+    """
+    import hmac
+
+    computed = hash_api_key(api_key)
+    return hmac.compare_digest(computed, expected_hash)

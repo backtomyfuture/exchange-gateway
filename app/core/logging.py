@@ -58,6 +58,11 @@ def configure_logging() -> None:
     structlog_root.setLevel(logging.DEBUG if settings.DEBUG else logging.INFO)
     structlog_root.propagate = False
 
+    # 捕获根 logger，使第三方库（exchangelib、tortoise、uvicorn）也通过 structlog 输出
+    root = logging.getLogger()
+    root.handlers = [handler]
+    root.setLevel(logging.DEBUG if settings.DEBUG else logging.INFO)
+
 
 def get_logger(name: str):
     """Get a structlog logger. Prefer this over loguru for new code."""
