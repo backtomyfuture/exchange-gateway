@@ -638,7 +638,16 @@
     "error_429": "Rate limit exceeded",
     "error_429_action": "Reduce request frequency or request higher limits",
     "error_500": "Internal server error",
-    "error_500_action": "Retry later or contact admin"
+    "error_500_action": "Retry later or contact admin",
+    "label_endpoint": "Endpoint",
+    "label_permission": "Permission",
+    "label_description": "Description",
+    "label_list": "List",
+    "label_detail": "Detail",
+    "label_mark": "Mark",
+    "label_variable_syntax": "Variable Syntax",
+    "label_permission_receive": "receive (list/detail), read (mark)",
+    "param_attachments_short": "Attachments"
   },
   "profile": {
     "label_profile": "Profile",

@@ -40,9 +40,9 @@
           <!-- 2. 发送邮件 -->
           <n-tab-pane name="send" :tab="$t('developer.tab_send')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
-              <n-descriptions-item label="接口">POST /api/v1/exchange/emails/send</n-descriptions-item>
-              <n-descriptions-item label="权限">send</n-descriptions-item>
-              <n-descriptions-item label="说明">{{ $t('developer.send_desc') }}</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_endpoint')">POST /api/v1/exchange/emails/send</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_permission')">send</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_description')">{{ $t('developer.send_desc') }}</n-descriptions-item>
             </n-descriptions>
 
             <div class="text-14 font-bold mb-8">{{ $t('developer.request_params') }}</div>
@@ -64,10 +64,10 @@
           <!-- 3. 获取邮件 -->
           <n-tab-pane name="receive" :tab="$t('developer.tab_receive')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
-              <n-descriptions-item label="列表">GET /api/v1/exchange/emails/list</n-descriptions-item>
-              <n-descriptions-item label="详情">GET /api/v1/exchange/emails/{email_id}</n-descriptions-item>
-              <n-descriptions-item label="标记">PUT /api/v1/exchange/emails/{email_id}/read</n-descriptions-item>
-              <n-descriptions-item label="权限">receive (列表/详情), read (标记)</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_list')">GET /api/v1/exchange/emails/list</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_detail')">GET /api/v1/exchange/emails/{email_id}</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_mark')">PUT /api/v1/exchange/emails/{email_id}/read</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_permission')">{{ $t('developer.label_permission_receive') }}</n-descriptions-item>
             </n-descriptions>
             
             <n-tabs type="segment">
@@ -83,9 +83,9 @@
           <!-- 3.6. 文件夹管理 -->
           <n-tab-pane name="folders" :tab="$t('developer.tab_folders')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
-              <n-descriptions-item label="接口">GET /api/v1/exchange/emails/folders/all</n-descriptions-item>
-              <n-descriptions-item label="权限">folders</n-descriptions-item>
-              <n-descriptions-item label="说明">{{ $t('developer.folders_desc') }}</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_endpoint')">GET /api/v1/exchange/emails/folders/all</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_permission')">folders</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_description')">{{ $t('developer.folders_desc') }}</n-descriptions-item>
             </n-descriptions>
 
             <div class="text-14 font-bold mb-8">{{ $t('developer.request_params') }}</div>
@@ -104,9 +104,9 @@
           <!-- 3.5. 邮件同步 -->
           <n-tab-pane name="sync" :tab="$t('developer.tab_sync')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
-              <n-descriptions-item label="接口">POST /api/v1/exchange/emails/sync</n-descriptions-item>
-              <n-descriptions-item label="权限">sync</n-descriptions-item>
-              <n-descriptions-item label="说明">{{ $t('developer.sync_desc') }}</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_endpoint')">POST /api/v1/exchange/emails/sync</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_permission')">sync</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_description')">{{ $t('developer.sync_desc') }}</n-descriptions-item>
             </n-descriptions>
 
             <div class="text-14 font-bold mb-8">{{ $t('developer.request_params') }}</div>
@@ -125,9 +125,9 @@
           <!-- 3.8. 创建草稿 -->
           <n-tab-pane name="drafts" :tab="$t('developer.tab_drafts')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
-              <n-descriptions-item label="接口">POST /api/v1/exchange/emails/drafts</n-descriptions-item>
-              <n-descriptions-item label="权限">drafts</n-descriptions-item>
-              <n-descriptions-item label="说明">{{ $t('developer.drafts_desc') }}</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_endpoint')">POST /api/v1/exchange/emails/drafts</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_permission')">drafts</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_description')">{{ $t('developer.drafts_desc') }}</n-descriptions-item>
             </n-descriptions>
 
             <div class="text-14 font-bold mb-8">{{ $t('developer.request_params') }}</div>
@@ -146,9 +146,9 @@
           <!-- 3.9. 回复邮件 -->
           <n-tab-pane name="reply" :tab="$t('developer.tab_reply')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
-              <n-descriptions-item label="接口">POST /api/v1/exchange/emails/reply</n-descriptions-item>
-              <n-descriptions-item label="权限">reply</n-descriptions-item>
-              <n-descriptions-item label="说明">{{ $t('developer.reply_desc') }}</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_endpoint')">POST /api/v1/exchange/emails/reply</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_permission')">reply</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_description')">{{ $t('developer.reply_desc') }}</n-descriptions-item>
             </n-descriptions>
 
             <div class="text-14 font-bold mb-8">{{ $t('developer.request_params') }}</div>
@@ -167,9 +167,9 @@
           <!-- 3.10. 转发邮件 -->
           <n-tab-pane name="forward" :tab="$t('developer.tab_forward')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
-              <n-descriptions-item label="接口">POST /api/v1/exchange/emails/forward</n-descriptions-item>
-              <n-descriptions-item label="权限">forward</n-descriptions-item>
-              <n-descriptions-item label="说明">{{ $t('developer.forward_desc') }}</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_endpoint')">POST /api/v1/exchange/emails/forward</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_permission')">forward</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_description')">{{ $t('developer.forward_desc') }}</n-descriptions-item>
             </n-descriptions>
 
             <div class="text-14 font-bold mb-8">{{ $t('developer.request_params') }}</div>
@@ -188,8 +188,8 @@
           <!-- 4. 搜索邮件 -->
           <n-tab-pane name="search" :tab="$t('developer.tab_search')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
-              <n-descriptions-item label="接口">POST /api/v1/exchange/emails/search</n-descriptions-item>
-              <n-descriptions-item label="权限">search</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_endpoint')">POST /api/v1/exchange/emails/search</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_permission')">search</n-descriptions-item>
             </n-descriptions>
             
             <n-code language="python" :code="pythonSearchCode" />
@@ -198,9 +198,9 @@
           <!-- 5. 模板发送 -->
           <n-tab-pane name="template" :tab="$t('developer.tab_template')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
-              <n-descriptions-item label="接口">POST /api/v1/exchange/emails/send-template</n-descriptions-item>
-              <n-descriptions-item label="权限">send</n-descriptions-item>
-              <n-descriptions-item label="变量语法"><code v-pre>{{ 变量名 }}</code></n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_endpoint')">POST /api/v1/exchange/emails/send-template</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_permission')">send</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_variable_syntax')"><code v-pre>{{ 变量名 }}</code></n-descriptions-item>
             </n-descriptions>
 
             <n-alert type="info" :title="$t('developer.template_desc_title')" class="mb-16">
@@ -227,9 +227,9 @@
           <!-- 6. 通讯录 -->
           <n-tab-pane name="contacts" :tab="$t('developer.tab_contacts')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
-              <n-descriptions-item label="接口">GET /api/v1/exchange/contacts/resolve</n-descriptions-item>
-              <n-descriptions-item label="权限">contacts</n-descriptions-item>
-              <n-descriptions-item label="说明">{{ $t('developer.contact_resolve_desc') }}</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_endpoint')">GET /api/v1/exchange/contacts/resolve</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_permission')">contacts</n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_description')">{{ $t('developer.contact_resolve_desc') }}</n-descriptions-item>
             </n-descriptions>
 
             <div class="text-14 font-bold mb-8">{{ $t('developer.query_params') }}</div>
@@ -366,7 +366,7 @@ const templateParams = [
   { name: 'variables', type: 'object', required: false, desc: () => t('developer.template_param_vars') },
   { name: 'cc', type: 'string[]', required: false, desc: () => t('developer.param_cc') },
   { name: 'bcc', type: 'string[]', required: false, desc: () => t('developer.param_bcc') },
-  { name: 'attachments', type: 'array', required: false, desc: '附件列表' },
+  { name: 'attachments', type: 'array', required: false, desc: t('developer.param_attachments_short') },
 ]
 
 // Python 发送示例
@@ -561,7 +561,7 @@ const draftParams = [
   { name: 'body_type', type: 'string', required: false, desc: () => t('developer.drafts_body_type_desc') },
   { name: 'cc', type: 'string[]', required: false, desc: () => t('developer.param_cc') },
   { name: 'bcc', type: 'string[]', required: false, desc: () => t('developer.param_bcc') },
-  { name: 'attachments', type: 'array', required: false, desc: '附件列表' },
+  { name: 'attachments', type: 'array', required: false, desc: t('developer.param_attachments_short') },
 ]
 
 // 回复参数
@@ -574,7 +574,7 @@ const replyParams = [
   { name: 'reply_all', type: 'boolean', required: false, desc: () => t('developer.reply_all_desc') },
   { name: 'cc', type: 'string[]', required: false, desc: () => t('developer.param_cc') },
   { name: 'bcc', type: 'string[]', required: false, desc: () => t('developer.param_bcc') },
-  { name: 'attachments', type: 'array', required: false, desc: '附件列表' },
+  { name: 'attachments', type: 'array', required: false, desc: t('developer.param_attachments_short') },
 ]
 
 // 转发参数
@@ -586,7 +586,7 @@ const forwardParams = [
   { name: 'body', type: 'string', required: false, desc: () => t('developer.forward_body_desc') },
   { name: 'cc', type: 'string[]', required: false, desc: () => t('developer.param_cc') },
   { name: 'bcc', type: 'string[]', required: false, desc: () => t('developer.param_bcc') },
-  { name: 'attachments', type: 'array', required: false, desc: '附件列表' },
+  { name: 'attachments', type: 'array', required: false, desc: t('developer.param_attachments_short') },
 ]
 
 // 通讯录参数

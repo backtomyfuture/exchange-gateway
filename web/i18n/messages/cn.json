@@ -638,7 +638,16 @@
     "error_429": "请求频率超限",
     "error_429_action": "降低请求频率或申请提高限额",
     "error_500": "服务器内部错误",
-    "error_500_action": "稍后重试或联系管理员"
+    "error_500_action": "稍后重试或联系管理员",
+    "label_endpoint": "接口",
+    "label_permission": "权限",
+    "label_description": "说明",
+    "label_list": "列表",
+    "label_detail": "详情",
+    "label_mark": "标记",
+    "label_variable_syntax": "变量语法",
+    "label_permission_receive": "receive (列表/详情), read (标记)",
+    "param_attachments_short": "附件列表"
   },
   "profile": {
     "label_profile": "个人中心",
