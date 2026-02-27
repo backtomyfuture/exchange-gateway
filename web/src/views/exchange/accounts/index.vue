@@ -23,7 +23,7 @@ import { useCRUD } from '@/composables'
 import api from '@/api'
 import TheIcon from '@/components/icon/TheIcon.vue'
 
-defineOptions({ name: '邮箱账户管理' })
+defineOptions({ name: 'AccountManagement' })
 
 const { t } = useI18n()
 
@@ -43,7 +43,7 @@ const {
   handleDelete,
   handleAdd,
 } = useCRUD({
-  name: '邮箱账户',
+  name: t('exchange.accounts.name'),
   initForm: { is_active: true },
   doCreate: api.createExchangeAccount,
   doUpdate: api.updateExchangeAccount,

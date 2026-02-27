@@ -15,7 +15,7 @@ import CommonPage from '@/components/page/CommonPage.vue'
 import api from '@/api'
 import TheIcon from '@/components/icon/TheIcon.vue'
 
-defineOptions({ name: '使用统计' })
+defineOptions({ name: 'UsageStats' })
 
 const { t } = useI18n()
 

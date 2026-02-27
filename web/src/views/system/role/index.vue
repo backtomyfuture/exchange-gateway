@@ -27,7 +27,7 @@ import { useCRUD } from '@/composables'
 import api from '@/api'
 import TheIcon from '@/components/icon/TheIcon.vue'
 
-defineOptions({ name: '角色管理' })
+defineOptions({ name: 'RoleManagement' })
 
 const { t } = useI18n()
 
@@ -47,7 +47,7 @@ const {
   modalForm,
   modalFormRef,
 } = useCRUD({
-  name: '角色',
+  name: t('system.role.name'),
   initForm: {},
   doCreate: api.createRole,
   doDelete: api.deleteRole,

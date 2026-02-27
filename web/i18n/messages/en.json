@@ -31,6 +31,7 @@
     "text_hello": "Hello, {username}",
     "text_welcome": "Today is another day full of energy!",
     "subtitle": "Exchange Mail Gateway Console – Simplifying Connections",
+    "greeting_text": "Hello, {username}, {greeting}!",
     "greeting_late_night": "Burning the midnight oil",
     "greeting_morning": "Good morning",
     "greeting_forenoon": "Good morning",
@@ -646,6 +647,7 @@
     "label_detail": "Detail",
     "label_mark": "Mark",
     "label_variable_syntax": "Variable Syntax",
+    "label_variable_name": "variable_name",
     "label_permission_receive": "receive (list/detail), read (mark)",
     "param_attachments_short": "Attachments"
   },

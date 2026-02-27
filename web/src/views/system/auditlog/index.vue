@@ -10,7 +10,7 @@ import CrudTable from '@/components/table/CrudTable.vue'
 
 import api from '@/api'
 
-defineOptions({ name: '审计日志' })
+defineOptions({ name: 'AuditLog' })
 
 const { t } = useI18n()
 

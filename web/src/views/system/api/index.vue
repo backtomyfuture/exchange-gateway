@@ -14,7 +14,7 @@ import { useCRUD } from '@/composables'
 // import { loginTypeMap, loginTypeOptions } from '@/constant/data'
 import api from '@/api'
 
-defineOptions({ name: 'API管理' })
+defineOptions({ name: 'ApiManagement' })
 
 const { t } = useI18n()
 

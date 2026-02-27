@@ -200,7 +200,7 @@
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
               <n-descriptions-item :label="$t('developer.label_endpoint')">POST /api/v1/exchange/emails/send-template</n-descriptions-item>
               <n-descriptions-item :label="$t('developer.label_permission')">send</n-descriptions-item>
-              <n-descriptions-item :label="$t('developer.label_variable_syntax')"><code v-pre>{{ 变量名 }}</code></n-descriptions-item>
+              <n-descriptions-item :label="$t('developer.label_variable_syntax')"><code>{{ variableSyntaxExample }}</code></n-descriptions-item>
             </n-descriptions>
 
             <n-alert type="info" :title="$t('developer.template_desc_title')" class="mb-16">
@@ -276,11 +276,15 @@
 </template>
 
 <script setup>
-import { h } from 'vue'
+import { h, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NCode, NTag, NDescriptions, NDescriptionsItem, NDataTable } from 'naive-ui'
 
 const { t } = useI18n()
+
+const variableSyntaxExample = computed(() =>
+  `{{ ${t('developer.label_variable_name')} }}`
+)
 
 // 认证头
 const authHeaderCode = `X-API-KEY: your_api_key_here`

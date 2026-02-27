@@ -30,7 +30,7 @@ import api from '@/api'
 import TheIcon from '@/components/icon/TheIcon.vue'
 import { useUserStore } from '@/store'
 
-defineOptions({ name: '用户管理' })
+defineOptions({ name: 'UserManagement' })
 
 const { t } = useI18n()
 
@@ -50,7 +50,7 @@ const {
   handleDelete,
   handleAdd,
 } = useCRUD({
-  name: '用户',
+  name: t('system.user.name'),
   initForm: {},
   doCreate: api.createUser,
   doUpdate: api.updateUser,

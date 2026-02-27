@@ -14,7 +14,7 @@
                     />
                     <div ml-15>
                     <p text-20 font-bold text-white>
-                        {{ $t('views.workbench.text_hello', { username: userStore.name }) }}，{{ greeting }}！
+                        {{ $t('workbench.greeting_text', { username: userStore.name, greeting: greeting }) }}
                     </p>
                     <p mt-5 text-14 text-white op-80>{{ $t('workbench.subtitle') }}</p>
                     </div>
@@ -136,10 +136,10 @@ import api from '@/api'
 import { formatDate } from '@/utils'
 import TheIcon from '@/components/icon/TheIcon.vue'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 dayjs.extend(relativeTime)
-dayjs.locale('zh-cn')
+dayjs.locale(locale.value === 'en' ? 'en' : 'zh-cn')
 
 const userStore = useUserStore()
 const $router = useRouter()
@@ -180,8 +180,9 @@ onUnmounted(() => {
 
 function updateTime() {
     const now = new Date()
-    currentTime.value = now.toLocaleTimeString('zh-CN', { hour12: false })
-    currentDate.value = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
+    const dateLoc = locale.value === 'en' ? 'en-US' : 'zh-CN'
+    currentTime.value = now.toLocaleTimeString(dateLoc, { hour12: false })
+    currentDate.value = now.toLocaleDateString(dateLoc, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
 }
 
 async function loadData() {

@@ -24,7 +24,7 @@ import { useCRUD } from '@/composables'
 import api from '@/api'
 import TheIcon from '@/components/icon/TheIcon.vue'
 
-defineOptions({ name: 'Webhook订阅管理' })
+defineOptions({ name: 'WebhookManagement' })
 
 const { t } = useI18n()
 
@@ -60,7 +60,7 @@ const {
   handleEdit,
   handleSave,
 } = useCRUD({
-  name: 'Webhook订阅',
+  name: t('exchange.webhooks.name'),
   initForm: {
     account_id: null,
     url: '',

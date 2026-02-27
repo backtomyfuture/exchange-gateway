@@ -25,7 +25,7 @@ import api from '@/api'
 import TheIcon from '@/components/icon/TheIcon.vue'
 import RichTextEditor from '@/components/editor/RichTextEditor.vue'
 
-defineOptions({ name: '邮件模板管理' })
+defineOptions({ name: 'EmailTemplateManagement' })
 
 const { t } = useI18n()
 
@@ -48,7 +48,7 @@ const {
   handleDelete,
   handleAdd,
 } = useCRUD({
-  name: '邮件模板',
+  name: t('exchange.templates.name'),
   initForm: { 
     body_type: 'html', 
     is_active: true,

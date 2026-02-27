@@ -25,7 +25,7 @@ import { useCRUD } from '@/composables'
 import api from '@/api'
 import TheIcon from '@/components/icon/TheIcon.vue'
 
-defineOptions({ name: 'API密钥管理' })
+defineOptions({ name: 'ApiKeyManagement' })
 
 const { t } = useI18n()
 
@@ -63,7 +63,7 @@ const {
   modalFormRef,
   handleAdd,
 } = useCRUD({
-  name: 'API密钥',
+  name: t('exchange.keys.name'),
   initForm: {
     permissions: ['send', 'drafts', 'receive', 'search', 'delete', 'folders', 'sync', 'read', 'reply', 'forward', 'contacts'],
     rate_limit: 100,

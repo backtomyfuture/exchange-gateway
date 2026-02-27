@@ -25,7 +25,7 @@ import { formatDate, renderIcon } from '@/utils'
 import { useCRUD } from '@/composables'
 import api from '@/api'
 
-defineOptions({ name: '菜单管理' })
+defineOptions({ name: 'MenuManagement' })
 
 const { t } = useI18n()
 
@@ -50,7 +50,7 @@ const {
   modalForm,
   modalFormRef,
 } = useCRUD({
-  name: '菜单',
+  name: t('system.menu.name'),
   initForm,
   doCreate: api.createMenu,
   doDelete: api.deleteMenu,

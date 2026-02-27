@@ -19,7 +19,7 @@ import CrudTable from '@/components/table/CrudTable.vue'
 import { formatDate, renderIcon } from '@/utils'
 import api from '@/api'
 
-defineOptions({ name: '邮件日志' })
+defineOptions({ name: 'EmailLogs' })
 
 const { t } = useI18n()
 

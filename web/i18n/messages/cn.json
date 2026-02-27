@@ -31,6 +31,7 @@
     "text_hello": "hello, {username}",
     "text_welcome": "今天又是元气满满的一天!",
     "subtitle": "Exchange 邮件网关管理控制台 - 让连接更简单",
+    "greeting_text": "hello, {username}，{greeting}！",
     "greeting_late_night": "夜深了",
     "greeting_morning": "早上好",
     "greeting_forenoon": "上午好",
@@ -646,6 +647,7 @@
     "label_detail": "详情",
     "label_mark": "标记",
     "label_variable_syntax": "变量语法",
+    "label_variable_name": "变量名",
     "label_permission_receive": "receive (列表/详情), read (标记)",
     "param_attachments_short": "附件列表"
   },
