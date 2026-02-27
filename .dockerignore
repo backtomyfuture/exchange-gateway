@@ -1,88 +1,32 @@
-# Git
 .git
 .gitignore
-
-# Python
 __pycache__
 *.py[cod]
-*$py.class
-*.so
-.Python
 .venv
 venv/
-env/
 .env
 .env.*
 *.egg-info/
-.installed.cfg
-*.egg
 .pytest_cache/
 .coverage
 htmlcov/
-.tox/
-.nox/
-
-# IDE
 .idea/
 .vscode/
-*.swp
-*.swo
-
-# Logs
 *.log
 logs/
 app/logs/
-
-# Database files
 *.db
 *.sqlite3
-
-# Secrets
 .secrets/
 secrets/
 *.pem
-*.key
-!ssl/*.key
-!ssl/*.crt
-
-# Documentation
 *.md
 !web/README.md
-
-# Docker
-Dockerfile*
-docker-compose*.yml
-.docker/
-
-# Aerich migrations (保留，用于数据库迁移)
-# migrations/
-
-# macOS
-.DS_Store
-._*
-
-# Windows
-Thumbs.db
-Desktop.ini
-
-# Node modules (在构建阶段会重新安装)
+.docker-data/
+tests/
 web/node_modules/
 web/.pnpm-store/
-
-# Web dist (在构建阶段会重新生成)
-# web/dist/
-
-# Test files
-tests/
-test/
-*_test.py
-test_*.py
-
-# Scripts (部署时不需要)
-# scripts/
-
-# Temporary files
 *.tmp
-*.temp
-.temp/
-tmp/
+.DS_Store
+Thumbs.db
+.ruff_cache/
