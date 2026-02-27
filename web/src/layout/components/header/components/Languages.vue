@@ -22,6 +22,5 @@ const options = computed(() => {
 
 const handleChangeLocale = (value) => {
   store.setLocale(value)
-  window.location.reload()
 }
 </script>
