@@ -1,145 +1,112 @@
-# exchange-gateway
+# Exchange Gateway
 
+[![CI](https://github.com/f148002/exchange-gateway/actions/workflows/test.yml/badge.svg)](https://github.com/f148002/exchange-gateway/actions)
 [![License](https://img.shields.io/github/license/f148002/exchange-gateway)](LICENSE)
-[![Python Version](https://img.shields.io/badge/python-3.11+-blue)](https://www.python.org/)
-[![Docker](https://img.shields.io/badge/docker-ready-blue)](https://www.docker.com/)
-[![Last Commit](https://img.shields.io/github/last-commit/f148002/exchange-gateway)](https://github.com/f148002/exchange-gateway)
+[![Python](https://img.shields.io/badge/python-3.11+-blue)](https://www.python.org/)
 
-**Enterprise-grade Exchange/EWS mail gateway built with FastAPI.** Provides secure REST API for email operations and a complete admin dashboard.
-
-## ⚡ Quick Deploy
-
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/template/exchange-gateway?referralCode=f148002)
+REST API gateway for Microsoft Exchange / EWS with an admin dashboard.
 
 ## Features
 
-- **RESTful API**: Send, receive, search emails via API Key authentication
-- **Email Templates**: Create and manage email templates with variable substitution
-- **Webhook Support**: Subscribe to Exchange events (NewMail, Created, Modified, etc.)
-- **Admin Dashboard**: Account management, API keys, templates, audit logs
-- **Security**: AES-256-GCM password encryption, API Key hashing, key rotation
-- **Docker Deployment**: Production-ready Docker Compose configuration
+| Category | Details |
+|----------|---------|
+| **Email API** | Send, receive, search, reply, forward — all via `X-Api-Key` |
+| **Templates** | Jinja2 variable substitution, preview before send |
+| **Webhooks** | Real-time Exchange streaming events (NewMail, Created, …) |
+| **Dashboard** | Vue 3 + Naive UI — manage accounts, keys, templates, logs |
+| **Security** | AES-256-GCM encryption, SHA-256 key hashing, Docker Secrets |
+| **Observability** | Structured logging (structlog), Prometheus `/metrics`, audit trail |
 
 ## Quick Start
 
-### Prerequisites
-
-- Docker & Docker Compose
-- Exchange/Office 365 account
-
-### Deployment
-
 ```bash
-# Clone the repository
 git clone https://github.com/f148002/exchange-gateway.git
 cd exchange-gateway
 
-# Copy and edit environment configuration
-cp .env.example .env
-# Edit .env to configure your Exchange server
+# Generate secrets & configure
+./scripts/init-secrets.sh
+cp .env.example .env          # edit DATABASE_URL, EXCHANGE_SERVER, etc.
 
-# Start services
-docker compose up -d
+# Launch (includes MySQL + Redis)
+docker compose --profile local-db --profile local-redis up -d
 ```
 
-## Access
+| Endpoint | URL |
+|----------|-----|
+| Dashboard | http://localhost |
+| API Docs (Swagger) | http://localhost/docs |
+| Health Check | http://localhost:18001/health |
 
-| Service | URL |
-|---------|-----|
-| Admin Dashboard | `http://localhost:80` |
-| API Docs | `http://localhost:80/docs` |
-| App Direct | `http://localhost:18001` |
-| Health Check | `http://localhost:18001/api/v1/exchange/health` |
+Default login: `admin` / `123456`
+
+## Architecture
+
+```
+┌─────────┐      ┌──────────────┐      ┌───────┐
+│  Nginx  │─────▶│  FastAPI App │─────▶│ MySQL │
+│ (+ Vue) │      │   (Gunicorn) │      └───────┘
+└─────────┘      └──────┬───────┘
+                        │            ┌───────┐
+                        ├───────────▶│ Redis │
+                        │            └───┬───┘
+                 ┌──────┴───────┐       │
+                 │  ARQ Worker  │◀──────┘
+                 │ Webhook Wkr  │
+                 └──────────────┘
+```
+
+**Services** (all via Docker Compose):
+
+| Service | Role |
+|---------|------|
+| `app` | FastAPI backend — API + auth + migrations |
+| `nginx` | Reverse proxy + serves Vue 3 SPA |
+| `arq-worker` | Async task queue (email send, webhook delivery) |
+| `webhook-worker` | Exchange streaming event listener |
+| `mysql` | Primary database (profile: `local-db`) |
+| `redis` | Task queue + rate limiting (profile: `local-redis`) |
 
 ## API Usage
 
-### Send Email
-
 ```bash
-curl -k -X POST "https://your-server:9998/api/v1/exchange/emails/send" \
-  -H "X-Api-Key: YOUR_API_KEY" \
+# Send email
+curl -X POST http://localhost:18001/api/v1/exchange/emails/send \
+  -H "X-Api-Key: YOUR_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "account_id": 1,
-    "to": ["recipient@example.com"],
-    "subject": "Test Email",
-    "body": "<p>Email content</p>",
-    "body_type": "html"
-  }'
-```
+  -d '{"account_id":1,"to":["user@example.com"],"subject":"Hello","body":"<p>Hi</p>","body_type":"html"}'
 
-### Get Email Details
-
-```bash
-curl -k -X GET "https://your-server:9998/api/v1/exchange/emails/{message_id}" \
-  -H "X-Api-Key: YOUR_API_KEY"
-```
-
-### Webhook Events
-
-Subscribe to Exchange events via Webhook:
-
-```bash
-curl -k -X POST "https://your-server:9998/api/v1/exchange/webhooks" \
-  -H "X-Api-Key: YOUR_API_KEY" \
+# Subscribe to events
+curl -X POST http://localhost:18001/api/v1/exchange/webhooks/create \
+  -H "X-Api-Key: YOUR_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://your-callback-server.com/webhook",
-    "events": ["NewMailEvent"],
-    "secret": "your-webhook-secret"
-  }'
+  -d '{"url":"https://yourserver.com/hook","events":["NewMailEvent"],"secret":"s3cret"}'
 ```
 
-## Documentation
+Full API reference available at `/docs` (Swagger UI).
 
-- [Getting Started](docs/getting-started.md)
-- [Deployment Guide](docs/deployment.md)
-- [API Reference](docs/api.md)
-- [Webhook Guide](docs/webhook.md)
-- [Configuration](docs/configuration.md)
+## Development
+
+```bash
+pip install -r requirements.txt   # backend deps
+cd web && pnpm install             # frontend deps
+
+# Lint & format
+ruff check app/ tests/ scripts/
+ruff format app/ tests/ scripts/
+
+# Test (189 tests)
+pytest tests/ -v --ignore=tests/integration/ --ignore=tests/manual/
+```
 
 ## Tech Stack
 
-- **Backend**: Python 3.11, FastAPI, Tortoise ORM, exchangelib
-- **Frontend**: Vue 3, Vite, Naive UI, Pinia
-- **Database**: MySQL 8.0
-- **Deployment**: Docker, Nginx
-
-## Directory Structure
-
-```
-exchange-gateway/
-├── app/                    # FastAPI application
-│   ├── api/v1/exchange/    # Exchange API routes
-│   ├── models/             # Data models
-│   └── services/exchange/  # Email service layer
-├── web/                    # Vue3 admin dashboard
-├── tests/                  # Test suite
-├── docs/                   # Documentation
-├── docker/                 # Docker configurations
-├── scripts/                # Deployment scripts
-└── migrations/             # Database migrations
-```
-
-## Security
-
-- **Password Encryption**: Exchange account passwords encrypted with AES-256-GCM
-- **API Key**: SHA-256 hashed, displayed only once on creation
-- **Secrets**: Production passwords stored in `/etc/exchange-gateway/secrets/`
-
-### Key Rotation
-
-```bash
-python scripts/rotate_key.py --old-key "old-key" --new-key "new-key" --dry-run
-python scripts/rotate_key.py --old-key "old-key" --new-key "new-key"
-```
+| Layer | Technology |
+|-------|-----------|
+| Backend | Python 3.11, FastAPI, Tortoise ORM, exchangelib, ARQ |
+| Frontend | Vue 3, Vite, Naive UI, Pinia |
+| Database | MySQL 8.0, Redis 7 |
+| Infra | Docker, Nginx, Prometheus |
 
 ## License
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
-
-This project is based on [vue-fastapi-admin](https://github.com/mizhexiaoxiao/vue-fastapi-admin) (MIT License).
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+[Apache License 2.0](LICENSE) — based on [vue-fastapi-admin](https://github.com/mizhexiaoxiao/vue-fastapi-admin) (MIT).
