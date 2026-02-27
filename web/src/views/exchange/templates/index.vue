@@ -1,5 +1,6 @@
 <script setup>
 import { h, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   NButton,
   NForm,
@@ -25,6 +26,8 @@ import TheIcon from '@/components/icon/TheIcon.vue'
 import RichTextEditor from '@/components/editor/RichTextEditor.vue'
 
 defineOptions({ name: '邮件模板管理' })
+
+const { t } = useI18n()
 
 const $table = ref(null)
 const queryItems = ref({})
@@ -72,24 +75,24 @@ async function handlePreview(row) {
 
 const bodyTypeOptions = [
   { label: 'HTML', value: 'html' },
-  { label: '纯文本', value: 'text' },
+  { label: () => t('exchange.templates.type_plain_text'), value: 'text' },
 ]
 
 const columns = [
   {
-    title: '模板名称',
+    title: () => t('exchange.templates.col_name'),
     key: 'name',
     width: 150,
     ellipsis: { tooltip: true },
   },
   {
-    title: '主题',
+    title: () => t('exchange.templates.col_subject'),
     key: 'subject',
     width: 200,
     ellipsis: { tooltip: true },
   },
   {
-    title: '分类',
+    title: () => t('exchange.templates.col_category'),
     key: 'category',
     width: 100,
     align: 'center',
@@ -98,7 +101,7 @@ const columns = [
     },
   },
   {
-    title: '变量',
+    title: () => t('exchange.templates.col_variables'),
     key: 'variables',
     width: 150,
     render(row) {
@@ -114,7 +117,7 @@ const columns = [
     },
   },
   {
-    title: '类型',
+    title: () => t('exchange.templates.col_type'),
     key: 'body_type',
     width: 80,
     align: 'center',
@@ -126,7 +129,7 @@ const columns = [
     },
   },
   {
-    title: '状态',
+    title: () => t('exchange.templates.col_status'),
     key: 'is_active',
     width: 80,
     align: 'center',
@@ -134,12 +137,12 @@ const columns = [
       return h(
         NTag,
         { type: row.is_active ? 'success' : 'error' },
-        { default: () => (row.is_active ? '启用' : '禁用') }
+        { default: () => (row.is_active ? t('exchange.templates.status_active') : t('exchange.templates.status_inactive')) }
       )
     },
   },
   {
-    title: '创建时间',
+    title: () => t('exchange.templates.col_created_at'),
     key: 'created_at',
     width: 160,
     align: 'center',
@@ -148,7 +151,7 @@ const columns = [
     },
   },
   {
-    title: '操作',
+    title: () => t('exchange.templates.col_actions'),
     key: 'actions',
     width: 200,
     align: 'center',
@@ -164,7 +167,7 @@ const columns = [
             onClick: () => handlePreview(row),
           },
           {
-            default: () => '预览',
+            default: () => t('exchange.templates.btn_preview'),
             icon: renderIcon('mdi:eye', { size: 16 }),
           }
         ),
@@ -177,7 +180,7 @@ const columns = [
             onClick: () => handleEdit(row),
           },
           {
-            default: () => '编辑',
+            default: () => t('exchange.templates.btn_edit'),
             icon: renderIcon('material-symbols:edit', { size: 16 }),
           }
         ),
@@ -192,11 +195,11 @@ const columns = [
                 NButton,
                 { size: 'small', type: 'error' },
                 {
-                  default: () => '删除',
+                  default: () => t('exchange.templates.btn_delete'),
                   icon: renderIcon('material-symbols:delete-outline', { size: 16 }),
                 }
               ),
-            default: () => h('div', {}, '确定删除该模板吗?'),
+            default: () => h('div', {}, t('exchange.templates.confirm_delete')),
           }
         ),
       ]
@@ -206,22 +209,22 @@ const columns = [
 
 const validateForm = {
   name: [
-    { required: true, message: '请输入模板名称', trigger: ['input', 'blur'] },
+    { required: true, message: () => t('exchange.templates.validate_name_required'), trigger: ['input', 'blur'] },
   ],
   subject: [
-    { required: true, message: '请输入邮件主题', trigger: ['input', 'blur'] },
+    { required: true, message: () => t('exchange.templates.validate_subject_required'), trigger: ['input', 'blur'] },
   ],
   body: [
-    { required: true, message: '请输入邮件正文', trigger: ['input', 'blur'] },
+    { required: true, message: () => t('exchange.templates.validate_body_required'), trigger: ['input', 'blur'] },
   ],
 }
 </script>
 
 <template>
-  <CommonPage show-footer title="邮件模板管理">
+  <CommonPage show-footer :title="$t('exchange.templates.title')">
     <template #action>
       <NButton type="primary" @click="handleAdd">
-        <TheIcon icon="material-symbols:add" :size="18" class="mr-5" />新建模板
+        <TheIcon icon="material-symbols:add" :size="18" class="mr-5" />{{ $t('exchange.templates.add') }}
       </NButton>
     </template>
 
@@ -233,20 +236,20 @@ const validateForm = {
       :get-data="api.getEmailTemplates"
     >
       <template #queryBar>
-        <QueryBarItem label="名称" :label-width="40">
+        <QueryBarItem :label="$t('exchange.templates.query_name')" :label-width="40">
           <NInput
             v-model:value="queryItems.name"
             clearable
             type="text"
-            placeholder="搜索模板名称"
+            :placeholder="$t('exchange.templates.placeholder_search_name')"
             @keypress.enter="$table?.handleSearch()"
           />
         </QueryBarItem>
-        <QueryBarItem label="分类" :label-width="40">
+        <QueryBarItem :label="$t('exchange.templates.query_category')" :label-width="40">
           <NInput
             v-model:value="queryItems.category"
             clearable
-            placeholder="分类标签"
+            :placeholder="$t('exchange.templates.placeholder_search_category')"
             @keypress.enter="$table?.handleSearch()"
           />
         </QueryBarItem>
@@ -269,24 +272,24 @@ const validateForm = {
         :model="modalForm"
         :rules="validateForm"
       >
-        <NFormItem label="模板名称" path="name">
-          <NInput v-model:value="modalForm.name" clearable placeholder="如：订单通知" />
+        <NFormItem :label="$t('exchange.templates.form_name')" path="name">
+          <NInput v-model:value="modalForm.name" clearable :placeholder="$t('exchange.templates.placeholder_name')" />
         </NFormItem>
-        <NFormItem label="分类标签" path="category">
-          <NInput v-model:value="modalForm.category" clearable placeholder="可选，如：通知、营销" />
+        <NFormItem :label="$t('exchange.templates.form_category')" path="category">
+          <NInput v-model:value="modalForm.category" clearable :placeholder="$t('exchange.templates.placeholder_category')" />
         </NFormItem>
-        <NFormItem label="邮件主题" path="subject">
-          <NInput v-model:value="modalForm.subject" clearable placeholder="支持变量 {{name}}" />
+        <NFormItem :label="$t('exchange.templates.form_subject')" path="subject">
+          <NInput v-model:value="modalForm.subject" clearable :placeholder="$t('exchange.templates.placeholder_subject')" />
         </NFormItem>
-        <NFormItem label="正文类型" path="body_type">
+        <NFormItem :label="$t('exchange.templates.form_body_type')" path="body_type">
           <NSelect v-model:value="modalForm.body_type" :options="bodyTypeOptions" />
         </NFormItem>
-        <NFormItem label="邮件正文" path="body">
+        <NFormItem :label="$t('exchange.templates.form_body')" path="body">
           <!-- HTML 模式：富文本编辑器 -->
           <RichTextEditor
             v-if="modalForm.body_type === 'html'"
             v-model="modalForm.body"
-            placeholder="支持粘贴图片，支持变量 {{variable}}"
+            :placeholder="$t('exchange.templates.placeholder_body_html')"
             height="400px"
           />
           <!-- 纯文本模式：普通文本框 -->
@@ -294,19 +297,19 @@ const validateForm = {
             v-else
             v-model:value="modalForm.body"
             type="textarea"
-            placeholder="支持变量 {{variable}}"
+            :placeholder="$t('exchange.templates.placeholder_body_text')"
             :autosize="{ minRows: 8, maxRows: 15 }"
           />
         </NFormItem>
-        <NAlert type="info" title="变量说明" style="margin-bottom: 16px">
-          使用 <code>{{变量名}}</code> 语法定义变量，发送时传入对应的值进行替换。
-          <br />例如：<code>尊敬的 {{customer_name}}，您的订单 {{order_id}} 已发货。</code>
+        <NAlert type="info" :title="$t('exchange.templates.variable_tip_title')" style="margin-bottom: 16px">
+          {{ $t('exchange.templates.variable_tip_content') }}
+          <br />{{ $t('exchange.templates.variable_tip_example') }}
         </NAlert>
-        <NFormItem label="启用" path="is_active">
+        <NFormItem :label="$t('exchange.templates.form_active')" path="is_active">
           <NSwitch v-model:value="modalForm.is_active" />
         </NFormItem>
-        <NFormItem label="备注" path="remark">
-          <NInput v-model:value="modalForm.remark" type="textarea" clearable placeholder="可选" />
+        <NFormItem :label="$t('exchange.templates.form_remark')" path="remark">
+          <NInput v-model:value="modalForm.remark" type="textarea" clearable :placeholder="$t('exchange.templates.placeholder_remark')" />
         </NFormItem>
       </NForm>
     </CrudModal>
@@ -314,12 +317,12 @@ const validateForm = {
     <!-- 预览弹窗 -->
     <CrudModal
       v-model:visible="previewVisible"
-      title="模板预览"
+      :title="$t('exchange.templates.preview_title')"
       :show-footer="false"
       style="width: 700px; max-width: 90vw"
     >
       <div class="preview-subject">
-        <strong>主题：</strong>{{ previewData.subject }}
+        <strong>{{ $t('exchange.templates.preview_subject') }}</strong>{{ previewData.subject }}
       </div>
       <div class="preview-body" v-html="previewData.body"></div>
     </CrudModal>

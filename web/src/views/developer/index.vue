@@ -1,52 +1,51 @@
 <template>
   <AppPage :show-footer="false">
     <div flex-1>
-      <n-card title="开发者指南" size="small" rounded-10 segmented>
+      <n-card :title="$t('developer.title')" size="small" rounded-10 segmented>
         <template #header-extra>
             <n-button tag="a" href="/docs" target="_blank" type="primary" dashed>
-                打开 Swagger API 文档
+                {{ $t('developer.open_swagger') }}
             </n-button>
         </template>
         
-        <n-alert title="关于 Exchange 邮件网关 API" type="info" mb-20>
-           提供标准 RESTful API，支持邮件发送/接收/搜索。所有请求需要 API Key 认证，
-           并受速率限制保护（默认 100 次/分钟）。<br/>
-           注意：生产环境强制使用 HTTPS，如果是自签名证书，请在客户端忽略 SSL 验证（如 curl -k）。
+        <n-alert :title="$t('developer.about_title')" type="info" mb-20>
+           {{ $t('developer.about_desc') }}<br/>
+           {{ $t('developer.about_note') }}
         </n-alert>
 
         <n-tabs type="line" animated>
           <!-- 1. 认证 -->
-          <n-tab-pane name="auth" tab="🔑 认证方式">
+          <n-tab-pane name="auth" :tab="$t('developer.tab_auth')">
             <n-space vertical>
-                <div class="text-16 font-bold">获取 API Key</div>
+                <div class="text-16 font-bold">{{ $t('developer.get_api_key') }}</div>
                 <ol class="pl-20">
-                    <li>进入 <n-tag type="success">Exchange 服务</n-tag> -> <n-tag type="success">API 密钥</n-tag> 菜单</li>
-                    <li>点击 <strong>创建密钥</strong>，选择需要的权限</li>
-                    <li>复制生成的密钥 <n-tag type="warning">仅显示一次！</n-tag></li>
+                    <li>{{ $t('developer.auth_step_1') }} <n-tag type="success">{{ $t('developer.auth_step_1_menu1') }}</n-tag> -> <n-tag type="success">{{ $t('developer.auth_step_1_menu2') }}</n-tag> {{ $t('developer.auth_step_1_suffix') }}</li>
+                    <li>{{ $t('developer.auth_step_2') }}</li>
+                    <li>{{ $t('developer.auth_step_3') }} <n-tag type="warning">{{ $t('developer.auth_step_3_warning') }}</n-tag></li>
                 </ol>
 
-                <div class="text-16 font-bold mt-20">请求头格式</div>
+                <div class="text-16 font-bold mt-20">{{ $t('developer.request_header') }}</div>
                 <n-code language="http" :code="authHeaderCode" />
 
-                <n-alert type="warning" title="安全提示" class="mt-16">
+                <n-alert type="warning" :title="$t('developer.security_tip_title')" class="mt-16">
                   <ul class="pl-20 mb-0">
-                    <li>密钥只在创建时显示一次，请妥善保存</li>
-                    <li>建议配置 IP 白名单限制调用来源</li>
-                    <li>定期轮换密钥以提高安全性</li>
+                    <li>{{ $t('developer.security_tip_1') }}</li>
+                    <li>{{ $t('developer.security_tip_2') }}</li>
+                    <li>{{ $t('developer.security_tip_3') }}</li>
                   </ul>
                 </n-alert>
             </n-space>
           </n-tab-pane>
 
           <!-- 2. 发送邮件 -->
-          <n-tab-pane name="send" tab="📤 发送邮件">
+          <n-tab-pane name="send" :tab="$t('developer.tab_send')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
               <n-descriptions-item label="接口">POST /api/v1/exchange/emails/send</n-descriptions-item>
               <n-descriptions-item label="权限">send</n-descriptions-item>
-              <n-descriptions-item label="说明">异步发送，立即返回日志ID</n-descriptions-item>
+              <n-descriptions-item label="说明">{{ $t('developer.send_desc') }}</n-descriptions-item>
             </n-descriptions>
 
-            <div class="text-14 font-bold mb-8">请求参数</div>
+            <div class="text-14 font-bold mb-8">{{ $t('developer.request_params') }}</div>
             <n-data-table :columns="sendParamColumns" :data="sendParams" :bordered="false" size="small" class="mb-16" />
             
             <n-tabs type="segment">
@@ -63,7 +62,7 @@
           </n-tab-pane>
 
           <!-- 3. 获取邮件 -->
-          <n-tab-pane name="receive" tab="📥 邮件管理">
+          <n-tab-pane name="receive" :tab="$t('developer.tab_receive')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
               <n-descriptions-item label="列表">GET /api/v1/exchange/emails/list</n-descriptions-item>
               <n-descriptions-item label="详情">GET /api/v1/exchange/emails/{email_id}</n-descriptions-item>
@@ -81,15 +80,15 @@
             </n-tabs>
           </n-tab-pane>
 
-          <!-- 3.6. 文件夹管理 (新增) -->
-          <n-tab-pane name="folders" tab="📂 文件夹管理">
+          <!-- 3.6. 文件夹管理 -->
+          <n-tab-pane name="folders" :tab="$t('developer.tab_folders')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
               <n-descriptions-item label="接口">GET /api/v1/exchange/emails/folders/all</n-descriptions-item>
               <n-descriptions-item label="权限">folders</n-descriptions-item>
-              <n-descriptions-item label="说明">获取所有文件夹（包括自定义）的 ID、ChangeKey 和层级关系</n-descriptions-item>
+              <n-descriptions-item label="说明">{{ $t('developer.folders_desc') }}</n-descriptions-item>
             </n-descriptions>
 
-            <div class="text-14 font-bold mb-8">请求参数</div>
+            <div class="text-14 font-bold mb-8">{{ $t('developer.request_params') }}</div>
             <n-data-table :columns="sendParamColumns" :data="folderParams" :bordered="false" size="small" class="mb-16" />
             
             <n-tabs type="segment">
@@ -102,15 +101,15 @@
             </n-tabs>
           </n-tab-pane>
 
-          <!-- 3.5. 邮件同步 (新增) -->
-          <n-tab-pane name="sync" tab="🔁 邮件同步">
+          <!-- 3.5. 邮件同步 -->
+          <n-tab-pane name="sync" :tab="$t('developer.tab_sync')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
               <n-descriptions-item label="接口">POST /api/v1/exchange/emails/sync</n-descriptions-item>
               <n-descriptions-item label="权限">sync</n-descriptions-item>
-              <n-descriptions-item label="说明">获取自上次 sync_state 之后的增量变化，适合轮询同步</n-descriptions-item>
+              <n-descriptions-item label="说明">{{ $t('developer.sync_desc') }}</n-descriptions-item>
             </n-descriptions>
 
-            <div class="text-14 font-bold mb-8">请求参数</div>
+            <div class="text-14 font-bold mb-8">{{ $t('developer.request_params') }}</div>
             <n-data-table :columns="sendParamColumns" :data="syncParams" :bordered="false" size="small" class="mb-16" />
             
             <n-tabs type="segment">
@@ -123,15 +122,15 @@
             </n-tabs>
           </n-tab-pane>
 
-          <!-- 3.8. 创建草稿 (新增) -->
-          <n-tab-pane name="drafts" tab="📝 创建草稿">
+          <!-- 3.8. 创建草稿 -->
+          <n-tab-pane name="drafts" :tab="$t('developer.tab_drafts')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
               <n-descriptions-item label="接口">POST /api/v1/exchange/emails/drafts</n-descriptions-item>
               <n-descriptions-item label="权限">drafts</n-descriptions-item>
-              <n-descriptions-item label="说明">创建邮件并保存到草稿箱，不进行发送</n-descriptions-item>
+              <n-descriptions-item label="说明">{{ $t('developer.drafts_desc') }}</n-descriptions-item>
             </n-descriptions>
 
-            <div class="text-14 font-bold mb-8">请求参数</div>
+            <div class="text-14 font-bold mb-8">{{ $t('developer.request_params') }}</div>
             <n-data-table :columns="sendParamColumns" :data="draftParams" :bordered="false" size="small" class="mb-16" />
             
             <n-tabs type="segment">
@@ -144,15 +143,15 @@
             </n-tabs>
           </n-tab-pane>
 
-          <!-- 3.9. 回复邮件 (新增) -->
-          <n-tab-pane name="reply" tab="↩️ 回复邮件">
+          <!-- 3.9. 回复邮件 -->
+          <n-tab-pane name="reply" :tab="$t('developer.tab_reply')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
               <n-descriptions-item label="接口">POST /api/v1/exchange/emails/reply</n-descriptions-item>
               <n-descriptions-item label="权限">reply</n-descriptions-item>
-              <n-descriptions-item label="说明">回复指定邮件，支持回复全部</n-descriptions-item>
+              <n-descriptions-item label="说明">{{ $t('developer.reply_desc') }}</n-descriptions-item>
             </n-descriptions>
 
-            <div class="text-14 font-bold mb-8">请求参数</div>
+            <div class="text-14 font-bold mb-8">{{ $t('developer.request_params') }}</div>
             <n-data-table :columns="sendParamColumns" :data="replyParams" :bordered="false" size="small" class="mb-16" />
             
             <n-tabs type="segment">
@@ -165,15 +164,15 @@
             </n-tabs>
           </n-tab-pane>
 
-          <!-- 3.10. 转发邮件 (新增) -->
-          <n-tab-pane name="forward" tab="➡️ 转发邮件">
+          <!-- 3.10. 转发邮件 -->
+          <n-tab-pane name="forward" :tab="$t('developer.tab_forward')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
               <n-descriptions-item label="接口">POST /api/v1/exchange/emails/forward</n-descriptions-item>
               <n-descriptions-item label="权限">forward</n-descriptions-item>
-              <n-descriptions-item label="说明">转发指定邮件，可添加转发附言</n-descriptions-item>
+              <n-descriptions-item label="说明">{{ $t('developer.forward_desc') }}</n-descriptions-item>
             </n-descriptions>
 
-            <div class="text-14 font-bold mb-8">请求参数</div>
+            <div class="text-14 font-bold mb-8">{{ $t('developer.request_params') }}</div>
             <n-data-table :columns="sendParamColumns" :data="forwardParams" :bordered="false" size="small" class="mb-16" />
             
             <n-tabs type="segment">
@@ -187,7 +186,7 @@
           </n-tab-pane>
 
           <!-- 4. 搜索邮件 -->
-          <n-tab-pane name="search" tab="🔍 搜索邮件">
+          <n-tab-pane name="search" :tab="$t('developer.tab_search')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
               <n-descriptions-item label="接口">POST /api/v1/exchange/emails/search</n-descriptions-item>
               <n-descriptions-item label="权限">search</n-descriptions-item>
@@ -197,22 +196,22 @@
           </n-tab-pane>
           
           <!-- 5. 模板发送 -->
-          <n-tab-pane name="template" tab="📝 模板发送">
+          <n-tab-pane name="template" :tab="$t('developer.tab_template')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
               <n-descriptions-item label="接口">POST /api/v1/exchange/emails/send-template</n-descriptions-item>
               <n-descriptions-item label="权限">send</n-descriptions-item>
               <n-descriptions-item label="变量语法"><code v-pre>{{ 变量名 }}</code></n-descriptions-item>
             </n-descriptions>
 
-            <n-alert type="info" title="模板功能说明" class="mb-16">
+            <n-alert type="info" :title="$t('developer.template_desc_title')" class="mb-16">
               <ul class="pl-20 mb-0">
-                <li>在后台「邮件模板」页面创建模板，使用 <code v-pre>{{ name }}</code> 语法定义变量</li>
-                <li>调用 API 时传入 <code>variables</code> 参数，系统自动替换变量</li>
-                <li>模板支持 HTML 和纯文本两种格式</li>
+                <li>{{ $t('developer.template_desc_1') }}</li>
+                <li>{{ $t('developer.template_desc_2') }}</li>
+                <li>{{ $t('developer.template_desc_3') }}</li>
               </ul>
             </n-alert>
 
-            <div class="text-14 font-bold mb-8">请求参数</div>
+            <div class="text-14 font-bold mb-8">{{ $t('developer.request_params') }}</div>
             <n-data-table :columns="sendParamColumns" :data="templateParams" :bordered="false" size="small" class="mb-16" />
             
             <n-tabs type="segment">
@@ -226,17 +225,17 @@
           </n-tab-pane>
           
           <!-- 6. 通讯录 -->
-          <n-tab-pane name="contacts" tab="👥 通讯录">
+          <n-tab-pane name="contacts" :tab="$t('developer.tab_contacts')">
             <n-descriptions :column="1" label-placement="left" bordered mb-16>
               <n-descriptions-item label="接口">GET /api/v1/exchange/contacts/resolve</n-descriptions-item>
               <n-descriptions-item label="权限">contacts</n-descriptions-item>
-              <n-descriptions-item label="说明">优先搜索个人通讯录，未找到则回退搜索 GAL</n-descriptions-item>
+              <n-descriptions-item label="说明">{{ $t('developer.contact_resolve_desc') }}</n-descriptions-item>
             </n-descriptions>
 
-            <div class="text-14 font-bold mb-8">查询参数</div>
+            <div class="text-14 font-bold mb-8">{{ $t('developer.query_params') }}</div>
             <n-data-table :columns="sendParamColumns" :data="contactParams" :bordered="false" size="small" class="mb-16" />
             
-            <div class="text-14 font-bold mb-8">响应结构</div>
+            <div class="text-14 font-bold mb-8">{{ $t('developer.response_structure') }}</div>
             <n-code language="json" :code="contactResponseCode" class="mb-16" />
             
             <n-tabs type="segment">
@@ -250,24 +249,24 @@
           </n-tab-pane>
           
           <!-- 7. Webhook -->
-          <n-tab-pane name="webhook" tab="🪝 Webhook 回调">
-            <n-alert type="info" title="Webhook 说明" class="mb-16">
+          <n-tab-pane name="webhook" :tab="$t('developer.tab_webhook')">
+            <n-alert type="info" :title="$t('developer.webhook_desc_title')" class="mb-16">
               <ul class="pl-20 mb-0">
-                <li>当有新邮件到达时，系统会向配置的 URL 发送 POST 请求</li>
-                <li>请求包含 <strong>X-Exchange-Signature</strong> 头，用于验证请求来源</li>
-                <li>失败重试机制：指数退避重试 3 次（间隔 2s, 4s, 8s...）</li>
+                <li>{{ $t('developer.webhook_desc_1') }}</li>
+                <li>{{ $t('developer.webhook_desc_2') }}</li>
+                <li>{{ $t('developer.webhook_desc_3') }}</li>
               </ul>
             </n-alert>
 
-            <div class="text-14 font-bold mb-8">Payload 结构</div>
+            <div class="text-14 font-bold mb-8">{{ $t('developer.webhook_payload') }}</div>
             <n-code language="json" :code="webhookPayloadCode" class="mb-16" />
 
-            <div class="text-14 font-bold mb-8">签名验证 (Python)</div>
+            <div class="text-14 font-bold mb-8">{{ $t('developer.webhook_verify') }}</div>
             <n-code language="python" :code="pythonWebhookVerifyCode" />
           </n-tab-pane>
 
           <!-- 8. 错误处理 -->
-           <n-tab-pane name="errors" tab="⚠️ 错误码">
+           <n-tab-pane name="errors" :tab="$t('developer.tab_errors')">
              <n-data-table :columns="errorColumns" :data="errorCodes" :bordered="false" size="small" />
            </n-tab-pane>
         </n-tabs>
@@ -278,45 +277,48 @@
 
 <script setup>
 import { h } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NCode, NTag, NDescriptions, NDescriptionsItem, NDataTable } from 'naive-ui'
+
+const { t } = useI18n()
 
 // 认证头
 const authHeaderCode = `X-API-KEY: your_api_key_here`
 
 // 发送参数表格
 const sendParamColumns = [
-  { title: '参数', key: 'name', width: 120 },
-  { title: '类型', key: 'type', width: 100 },
-  { title: '必填', key: 'required', width: 60,
+  { title: () => t('developer.param_col_name'), key: 'name', width: 120 },
+  { title: () => t('developer.param_col_type'), key: 'type', width: 100 },
+  { title: () => t('developer.param_col_required'), key: 'required', width: 60,
     render: (row) => h(NTag, { type: row.required ? 'error' : 'default', size: 'small' }, 
-      { default: () => row.required ? '是' : '否' })
+      { default: () => row.required ? t('developer.param_yes') : t('developer.param_no') })
   },
-  { title: '说明', key: 'desc' },
+  { title: () => t('developer.param_col_desc'), key: 'desc' },
 ]
 
 const sendParams = [
-  { name: 'account_id', type: 'int', required: true, desc: '发送账户ID' },
-  { name: 'to', type: 'string[]', required: true, desc: '收件人邮箱列表' },
-  { name: 'subject', type: 'string', required: true, desc: '邮件主题' },
-  { name: 'body', type: 'string', required: true, desc: '邮件正文' },
-  { name: 'body_type', type: 'string', required: false, desc: '"text" 或 "html"，默认 "text"' },
-  { name: 'cc', type: 'string[]', required: false, desc: '抄送列表' },
-  { name: 'bcc', type: 'string[]', required: false, desc: '密送列表' },
-  { name: 'attachments', type: 'array', required: false, desc: '附件列表 [{filename, content(base64), content_type}]' },
+  { name: 'account_id', type: 'int', required: true, desc: () => t('developer.param_account_id') },
+  { name: 'to', type: 'string[]', required: true, desc: () => t('developer.param_to') },
+  { name: 'subject', type: 'string', required: true, desc: () => t('developer.param_subject') },
+  { name: 'body', type: 'string', required: true, desc: () => t('developer.param_body') },
+  { name: 'body_type', type: 'string', required: false, desc: () => t('developer.param_body_type') },
+  { name: 'cc', type: 'string[]', required: false, desc: () => t('developer.param_cc') },
+  { name: 'bcc', type: 'string[]', required: false, desc: () => t('developer.param_bcc') },
+  { name: 'attachments', type: 'array', required: false, desc: () => t('developer.param_attachments') },
 ]
 
 // 同步请求参数
 const syncParams = [
-  { name: 'account_id', type: 'int', required: true, desc: '账户ID' },
-  { name: 'folder', type: 'string', required: false, desc: '文件夹名称，默认 INBOX' },
-  { name: 'sync_state', type: 'string', required: false, desc: '上次同步状态字符串（首次为空）' },
-  { name: 'limit', type: 'int', required: false, desc: '返回最大数量，默认 100' },
-  { name: 'only_fields', type: 'string[]', required: false, desc: '仅同步指定字段' },
+  { name: 'account_id', type: 'int', required: true, desc: () => t('developer.param_account_id') },
+  { name: 'folder', type: 'string', required: false, desc: () => t('developer.sync_folder_desc') },
+  { name: 'sync_state', type: 'string', required: false, desc: () => t('developer.sync_state_desc') },
+  { name: 'limit', type: 'int', required: false, desc: () => t('developer.sync_limit_desc') },
+  { name: 'only_fields', type: 'string[]', required: false, desc: () => t('developer.sync_only_fields_desc') },
 ]
 
 // 文件夹参数
 const folderParams = [
-  { name: 'account_id', type: 'int', required: true, desc: '账户ID' },
+  { name: 'account_id', type: 'int', required: true, desc: () => t('developer.param_account_id') },
 ]
 
 // 文件夹 - Python
@@ -339,31 +341,31 @@ const curlFolderCode = `curl -k -G "https://your-server/api/v1/exchange/emails/f
 
 // 错误码表格
 const errorColumns = [
-  { title: '状态码', key: 'code', width: 100,
+  { title: () => t('developer.error_col_code'), key: 'code', width: 100,
     render: (row) => h(NTag, { type: row.type, size: 'small' }, { default: () => row.code })
   },
-  { title: '说明', key: 'desc' },
-  { title: '处理建议', key: 'action' },
+  { title: () => t('developer.error_col_desc'), key: 'desc' },
+  { title: () => t('developer.error_col_action'), key: 'action' },
 ]
 
 const errorCodes = [
-  { code: '200', type: 'success', desc: '请求成功', action: '正常处理响应数据' },
-  { code: '401', type: 'error', desc: 'API Key 无效或已过期', action: '检查密钥是否正确或重新生成' },
-  { code: '403', type: 'error', desc: '权限不足或 IP 不在白名单', action: '检查密钥权限配置' },
-  { code: '404', type: 'warning', desc: '模板不存在或已禁用', action: '检查模板ID是否正确' },
-  { code: '422', type: 'warning', desc: '参数验证失败', action: '检查请求参数格式' },
-  { code: '429', type: 'warning', desc: '请求频率超限', action: '降低请求频率或申请提高限额' },
-  { code: '500', type: 'error', desc: '服务器内部错误', action: '稍后重试或联系管理员' },
+  { code: '200', type: 'success', desc: () => t('developer.error_200'), action: () => t('developer.error_200_action') },
+  { code: '401', type: 'error', desc: () => t('developer.error_401'), action: () => t('developer.error_401_action') },
+  { code: '403', type: 'error', desc: () => t('developer.error_403'), action: () => t('developer.error_403_action') },
+  { code: '404', type: 'warning', desc: () => t('developer.error_404'), action: () => t('developer.error_404_action') },
+  { code: '422', type: 'warning', desc: () => t('developer.error_422'), action: () => t('developer.error_422_action') },
+  { code: '429', type: 'warning', desc: () => t('developer.error_429'), action: () => t('developer.error_429_action') },
+  { code: '500', type: 'error', desc: () => t('developer.error_500'), action: () => t('developer.error_500_action') },
 ]
 
 // 模板发送参数
 const templateParams = [
-  { name: 'template_id', type: 'int', required: true, desc: '模板ID（在后台查看）' },
-  { name: 'account_id', type: 'int', required: true, desc: '发送账户ID' },
-  { name: 'to', type: 'string[]', required: true, desc: '收件人邮箱列表' },
-  { name: 'variables', type: 'object', required: false, desc: '变量替换 {"name": "value"}' },
-  { name: 'cc', type: 'string[]', required: false, desc: '抄送列表' },
-  { name: 'bcc', type: 'string[]', required: false, desc: '密送列表' },
+  { name: 'template_id', type: 'int', required: true, desc: () => t('developer.template_param_id') },
+  { name: 'account_id', type: 'int', required: true, desc: () => t('developer.param_account_id') },
+  { name: 'to', type: 'string[]', required: true, desc: () => t('developer.param_to') },
+  { name: 'variables', type: 'object', required: false, desc: () => t('developer.template_param_vars') },
+  { name: 'cc', type: 'string[]', required: false, desc: () => t('developer.param_cc') },
+  { name: 'bcc', type: 'string[]', required: false, desc: () => t('developer.param_bcc') },
   { name: 'attachments', type: 'array', required: false, desc: '附件列表' },
 ]
 
@@ -552,45 +554,45 @@ const curlSyncCode = `curl -k -X POST "https://your-server/api/v1/exchange/email
 
 // 草稿参数
 const draftParams = [
-  { name: 'account_id', type: 'int', required: true, desc: '账户ID' },
-  { name: 'to', type: 'string[]', required: false, desc: '收件人邮箱列表' },
-  { name: 'subject', type: 'string', required: false, desc: '邮件主题' },
-  { name: 'body', type: 'string', required: false, desc: '邮件正文' },
-  { name: 'body_type', type: 'string', required: false, desc: '"text" 或 "html"，默认 "html"' },
-  { name: 'cc', type: 'string[]', required: false, desc: '抄送列表' },
-  { name: 'bcc', type: 'string[]', required: false, desc: '密送列表' },
+  { name: 'account_id', type: 'int', required: true, desc: () => t('developer.param_account_id') },
+  { name: 'to', type: 'string[]', required: false, desc: () => t('developer.param_to') },
+  { name: 'subject', type: 'string', required: false, desc: () => t('developer.param_subject') },
+  { name: 'body', type: 'string', required: false, desc: () => t('developer.param_body') },
+  { name: 'body_type', type: 'string', required: false, desc: () => t('developer.drafts_body_type_desc') },
+  { name: 'cc', type: 'string[]', required: false, desc: () => t('developer.param_cc') },
+  { name: 'bcc', type: 'string[]', required: false, desc: () => t('developer.param_bcc') },
   { name: 'attachments', type: 'array', required: false, desc: '附件列表' },
 ]
 
 // 回复参数
 const replyParams = [
-  { name: 'account_id', type: 'int', required: true, desc: '账户ID' },
-  { name: 'reference_item_id', type: 'string', required: true, desc: '原邮件ID' },
-  { name: 'to', type: 'string[]', required: false, desc: '收件人（不填默认回给发送者）' },
-  { name: 'subject', type: 'string', required: false, desc: '邮件主题（不填自动加 Re:）' },
-  { name: 'body', type: 'string', required: true, desc: '回复内容' },
-  { name: 'reply_all', type: 'boolean', required: false, desc: '是否回复所有人，默认 false' },
-  { name: 'cc', type: 'string[]', required: false, desc: '抄送列表' },
-  { name: 'bcc', type: 'string[]', required: false, desc: '密送列表' },
+  { name: 'account_id', type: 'int', required: true, desc: () => t('developer.param_account_id') },
+  { name: 'reference_item_id', type: 'string', required: true, desc: () => t('developer.reply_ref_desc') },
+  { name: 'to', type: 'string[]', required: false, desc: () => t('developer.reply_to_desc') },
+  { name: 'subject', type: 'string', required: false, desc: () => t('developer.reply_subject_desc') },
+  { name: 'body', type: 'string', required: true, desc: () => t('developer.reply_body_desc') },
+  { name: 'reply_all', type: 'boolean', required: false, desc: () => t('developer.reply_all_desc') },
+  { name: 'cc', type: 'string[]', required: false, desc: () => t('developer.param_cc') },
+  { name: 'bcc', type: 'string[]', required: false, desc: () => t('developer.param_bcc') },
   { name: 'attachments', type: 'array', required: false, desc: '附件列表' },
 ]
 
 // 转发参数
 const forwardParams = [
-  { name: 'account_id', type: 'int', required: true, desc: '账户ID' },
-  { name: 'reference_item_id', type: 'string', required: true, desc: '原邮件ID' },
-  { name: 'to', type: 'string[]', required: true, desc: '收件人邮箱列表' },
-  { name: 'subject', type: 'string', required: false, desc: '邮件主题（不填自动加 Fwd:）' },
-  { name: 'body', type: 'string', required: false, desc: '转发附言' },
-  { name: 'cc', type: 'string[]', required: false, desc: '抄送列表' },
-  { name: 'bcc', type: 'string[]', required: false, desc: '密送列表' },
+  { name: 'account_id', type: 'int', required: true, desc: () => t('developer.param_account_id') },
+  { name: 'reference_item_id', type: 'string', required: true, desc: () => t('developer.reply_ref_desc') },
+  { name: 'to', type: 'string[]', required: true, desc: () => t('developer.param_to') },
+  { name: 'subject', type: 'string', required: false, desc: () => t('developer.forward_subject_desc') },
+  { name: 'body', type: 'string', required: false, desc: () => t('developer.forward_body_desc') },
+  { name: 'cc', type: 'string[]', required: false, desc: () => t('developer.param_cc') },
+  { name: 'bcc', type: 'string[]', required: false, desc: () => t('developer.param_bcc') },
   { name: 'attachments', type: 'array', required: false, desc: '附件列表' },
 ]
 
 // 通讯录参数
 const contactParams = [
-  { name: 'q', type: 'string', required: true, desc: '查询关键词 (姓名/邮箱)' },
-  { name: 'account_id', type: 'int', required: true, desc: '使用的账户ID' },
+  { name: 'q', type: 'string', required: true, desc: () => t('developer.contact_q_desc') },
+  { name: 'account_id', type: 'int', required: true, desc: () => t('developer.contact_account_desc') },
 ]
 
 // Python 创建草稿示例
