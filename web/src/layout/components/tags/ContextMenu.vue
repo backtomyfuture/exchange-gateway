@@ -13,6 +13,7 @@
 <script setup>
 import { useTagsStore, useAppStore } from '@/store'
 import { renderIcon } from '@/utils'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps({
   show: {
@@ -37,34 +38,35 @@ const emit = defineEmits(['update:show'])
 
 const tagsStore = useTagsStore()
 const appStore = useAppStore()
+const { t } = useI18n()
 
 const options = computed(() => [
   {
-    label: '重新加载',
+    label: t('layout.tags.reload'),
     key: 'reload',
     disabled: props.currentPath !== tagsStore.activeTag,
     icon: renderIcon('mdi:refresh', { size: '14px' }),
   },
   {
-    label: '关闭',
+    label: t('layout.tags.close'),
     key: 'close',
     disabled: tagsStore.tags.length <= 1,
     icon: renderIcon('mdi:close', { size: '14px' }),
   },
   {
-    label: '关闭其他',
+    label: t('layout.tags.close_other'),
     key: 'close-other',
     disabled: tagsStore.tags.length <= 1,
     icon: renderIcon('mdi:arrow-expand-horizontal', { size: '14px' }),
   },
   {
-    label: '关闭左侧',
+    label: t('layout.tags.close_left'),
     key: 'close-left',
     disabled: tagsStore.tags.length <= 1 || props.currentPath === tagsStore.tags[0].path,
     icon: renderIcon('mdi:arrow-expand-left', { size: '14px' }),
   },
   {
-    label: '关闭右侧',
+    label: t('layout.tags.close_right'),
     key: 'close-right',
     disabled:
       tagsStore.tags.length <= 1 ||

@@ -1,4 +1,5 @@
 import { useUserStore } from '@/store'
+import i18n from '~/i18n'
 
 export function addBaseParams(params) {
   if (!params.userId) {
@@ -7,24 +8,25 @@ export function addBaseParams(params) {
 }
 
 export function resolveResError(code, message) {
+  const t = i18n.global.t
   switch (code) {
     case 400:
-      message = message ?? '请求参数错误'
+      message = message ?? t('common.http_errors.400')
       break
     case 401:
-      message = message ?? '登录已过期'
+      message = message ?? t('common.http_errors.401')
       break
     case 403:
-      message = message ?? '没有权限'
+      message = message ?? t('common.http_errors.403')
       break
     case 404:
-      message = message ?? '资源或接口不存在'
+      message = message ?? t('common.http_errors.404')
       break
     case 500:
-      message = message ?? '服务器异常'
+      message = message ?? t('common.http_errors.500')
       break
     default:
-      message = message ?? `【${code}】: 未知异常!`
+      message = message ?? `【${code}】: ${t('common.http_errors.unknown')}!`
       break
   }
   return message

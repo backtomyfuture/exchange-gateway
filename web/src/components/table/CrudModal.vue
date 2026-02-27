@@ -12,8 +12,8 @@
     <template v-if="showFooter" #footer>
       <footer flex justify-end>
         <slot name="footer">
-          <n-button @click="show = false">取消</n-button>
-          <n-button :loading="loading" ml-20 type="primary" @click="emit('save')">保存</n-button>
+          <n-button @click="show = false">{{ $t('common.modal.cancel') }}</n-button>
+          <n-button :loading="loading" ml-20 type="primary" @click="emit('save')">{{ $t('common.modal.save') }}</n-button>
         </slot>
       </footer>
     </template>

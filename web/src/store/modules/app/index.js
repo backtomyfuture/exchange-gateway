@@ -16,7 +16,7 @@ export const useAppStore = defineStore('app', {
       /** keepAlive路由的key，重新赋值可重置keepAlive */
       aliveKeys: {},
       isDark,
-      locale: currentLocale || 'en',
+      locale: currentLocale || 'cn',
     }
   },
   actions: {

@@ -1,5 +1,6 @@
 <script setup>
 import { h, onMounted, ref, resolveDirective, withDirectives } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   NButton,
   NForm,
@@ -23,6 +24,8 @@ import api from '@/api'
 import TheIcon from '@/components/icon/TheIcon.vue'
 
 defineOptions({ name: '邮箱账户管理' })
+
+const { t } = useI18n()
 
 const $table = ref(null)
 const queryItems = ref({})
@@ -59,13 +62,13 @@ async function handleTest(row) {
   try {
     const res = await api.testExchangeAccount({ account_id: row.id })
     if (res.code === 200) {
-      $message.success(res.msg || '连接测试成功')
+      $message.success(res.msg || t('exchange.accounts.test_success'))
       $table.value?.handleSearch()
     } else {
-      $message.error(res.msg || '连接测试失败')
+      $message.error(res.msg || t('exchange.accounts.test_fail'))
     }
   } catch (err) {
-    $message.error('测试失败: ' + err.message)
+    $message.error(t('exchange.accounts.test_error') + ': ' + err.message)
   } finally {
     testLoading.value[row.id] = false
   }
@@ -79,25 +82,25 @@ const columns = [
     align: 'center',
   },
   {
-    title: '邮箱地址',
+    title: () => t('exchange.accounts.col_email'),
     key: 'email',
     width: 200,
     ellipsis: { tooltip: true },
   },
   {
-    title: '用户名',
+    title: () => t('exchange.accounts.col_username'),
     key: 'username',
     width: 120,
     align: 'center',
   },
   {
-    title: '显示名称',
+    title: () => t('exchange.accounts.col_display_name'),
     key: 'display_name',
     width: 120,
     align: 'center',
   },
   {
-    title: '状态',
+    title: () => t('exchange.accounts.col_status'),
     key: 'is_active',
     width: 80,
     align: 'center',
@@ -105,12 +108,12 @@ const columns = [
       return h(
         NTag,
         { type: row.is_active ? 'success' : 'error' },
-        { default: () => (row.is_active ? '启用' : '禁用') }
+        { default: () => (row.is_active ? t('exchange.accounts.status_active') : t('exchange.accounts.status_inactive')) }
       )
     },
   },
   {
-    title: '验证状态',
+    title: () => t('exchange.accounts.col_verified'),
     key: 'is_verified',
     width: 100,
     align: 'center',
@@ -118,12 +121,12 @@ const columns = [
       return h(
         NTag,
         { type: row.is_verified ? 'success' : 'warning' },
-        { default: () => (row.is_verified ? '已验证' : '未验证') }
+        { default: () => (row.is_verified ? t('exchange.accounts.verified') : t('exchange.accounts.unverified')) }
       )
     },
   },
   {
-    title: '最后验证时间',
+    title: () => t('exchange.accounts.col_last_verified'),
     key: 'last_verified_at',
     width: 160,
     align: 'center',
@@ -132,7 +135,7 @@ const columns = [
     },
   },
   {
-    title: '创建时间',
+    title: () => t('exchange.accounts.col_created_at'),
     key: 'created_at',
     width: 160,
     align: 'center',
@@ -141,7 +144,7 @@ const columns = [
     },
   },
   {
-    title: '操作',
+    title: () => t('exchange.accounts.col_actions'),
     key: 'actions',
     width: 240,
     align: 'center',
@@ -158,7 +161,7 @@ const columns = [
             onClick: () => handleTest(row),
           },
           {
-            default: () => '测试连接',
+            default: () => t('exchange.accounts.btn_test'),
             icon: renderIcon('mdi:connection', { size: 16 }),
           }
         ),
@@ -171,7 +174,7 @@ const columns = [
             onClick: () => handleEdit(row),
           },
           {
-            default: () => '编辑',
+            default: () => t('exchange.accounts.btn_edit'),
             icon: renderIcon('material-symbols:edit', { size: 16 }),
           }
         ),
@@ -186,11 +189,11 @@ const columns = [
                 NButton,
                 { size: 'small', type: 'error' },
                 {
-                  default: () => '删除',
+                  default: () => t('exchange.accounts.btn_delete'),
                   icon: renderIcon('material-symbols:delete-outline', { size: 16 }),
                 }
               ),
-            default: () => h('div', {}, '确定删除该邮箱账户吗?'),
+            default: () => h('div', {}, t('exchange.accounts.confirm_delete')),
           }
         ),
       ]
@@ -200,23 +203,23 @@ const columns = [
 
 const validateForm = {
   email: [
-    { required: true, message: '请输入邮箱地址', trigger: ['input', 'blur'] },
-    { type: 'email', message: '请输入正确的邮箱格式', trigger: ['blur'] },
+    { required: true, message: () => t('exchange.accounts.validate_email_required'), trigger: ['input', 'blur'] },
+    { type: 'email', message: () => t('exchange.accounts.validate_email_format'), trigger: ['blur'] },
   ],
   username: [
-    { required: true, message: '请输入用户名', trigger: ['input', 'blur'] },
+    { required: true, message: () => t('exchange.accounts.validate_username_required'), trigger: ['input', 'blur'] },
   ],
   password: [
-    { required: true, message: '请输入密码', trigger: ['input', 'blur'] },
+    { required: true, message: () => t('exchange.accounts.validate_password_required'), trigger: ['input', 'blur'] },
   ],
 }
 </script>
 
 <template>
-  <CommonPage show-footer title="邮箱账户管理">
+  <CommonPage show-footer :title="$t('exchange.accounts.title')">
     <template #action>
       <NButton type="primary" @click="handleAdd">
-        <TheIcon icon="material-symbols:add" :size="18" class="mr-5" />新建账户
+        <TheIcon icon="material-symbols:add" :size="18" class="mr-5" />{{ $t('exchange.accounts.add') }}
       </NButton>
     </template>
 
@@ -228,12 +231,12 @@ const validateForm = {
       :get-data="api.getExchangeAccounts"
     >
       <template #queryBar>
-        <QueryBarItem label="邮箱" :label-width="40">
+        <QueryBarItem :label="$t('exchange.accounts.query_email')" :label-width="40">
           <NInput
             v-model:value="queryItems.email"
             clearable
             type="text"
-            placeholder="请输入邮箱"
+            :placeholder="$t('exchange.accounts.placeholder_email')"
             @keypress.enter="$table?.handleSearch()"
           />
         </QueryBarItem>
@@ -255,49 +258,49 @@ const validateForm = {
         :model="modalForm"
         :rules="modalAction === 'add' ? validateForm : {}"
       >
-        <NFormItem label="邮箱地址" path="email">
+        <NFormItem :label="$t('exchange.accounts.form_email')" path="email">
           <NInput
             v-model:value="modalForm.email"
             clearable
-            placeholder="请输入邮箱地址"
+            :placeholder="$t('exchange.accounts.placeholder_form_email')"
             :disabled="modalAction === 'edit'"
           />
         </NFormItem>
-        <NFormItem label="用户名" path="username">
+        <NFormItem :label="$t('exchange.accounts.form_username')" path="username">
           <NInput
             v-model:value="modalForm.username"
             clearable
-            placeholder="登录用户名（不含域名）"
+            :placeholder="$t('exchange.accounts.placeholder_form_username')"
             :disabled="modalAction === 'edit'"
           />
         </NFormItem>
-        <NFormItem :label="modalAction === 'add' ? '密码' : '新密码'" path="password">
+        <NFormItem :label="modalAction === 'add' ? $t('exchange.accounts.form_password') : $t('exchange.accounts.form_new_password')" path="password">
           <NInput
             v-model:value="modalForm.password"
             type="password"
             show-password-on="mousedown"
             clearable
-            :placeholder="modalAction === 'add' ? '请输入密码' : '留空则不修改'"
+            :placeholder="modalAction === 'add' ? $t('exchange.accounts.placeholder_form_password') : $t('exchange.accounts.placeholder_form_password_edit')"
           />
         </NFormItem>
-        <NFormItem label="显示名称" path="display_name">
-          <NInput v-model:value="modalForm.display_name" clearable placeholder="可选" />
+        <NFormItem :label="$t('exchange.accounts.form_display_name')" path="display_name">
+          <NInput v-model:value="modalForm.display_name" clearable :placeholder="$t('exchange.accounts.placeholder_form_display_name')" />
         </NFormItem>
-        <NFormItem label="服务器" path="server">
-          <NInput v-model:value="modalForm.server" clearable placeholder="可选，使用默认配置" />
+        <NFormItem :label="$t('exchange.accounts.form_server')" path="server">
+          <NInput v-model:value="modalForm.server" clearable :placeholder="$t('exchange.accounts.placeholder_form_server')" />
         </NFormItem>
-        <NFormItem label="域名" path="domain">
-          <NInput v-model:value="modalForm.domain" clearable placeholder="可选，使用默认配置" />
+        <NFormItem :label="$t('exchange.accounts.form_domain')" path="domain">
+          <NInput v-model:value="modalForm.domain" clearable :placeholder="$t('exchange.accounts.placeholder_form_domain')" />
         </NFormItem>
-        <NFormItem label="启用" path="is_active">
+        <NFormItem :label="$t('exchange.accounts.form_active')" path="is_active">
           <NSwitch v-model:value="modalForm.is_active" />
         </NFormItem>
-        <NFormItem label="备注" path="remark">
+        <NFormItem :label="$t('exchange.accounts.form_remark')" path="remark">
           <NInput
             v-model:value="modalForm.remark"
             type="textarea"
             clearable
-            placeholder="可选"
+            :placeholder="$t('exchange.accounts.placeholder_form_remark')"
           />
         </NFormItem>
       </NForm>

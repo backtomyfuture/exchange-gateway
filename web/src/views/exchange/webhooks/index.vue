@@ -1,5 +1,6 @@
 <script setup>
 import { h, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   NButton,
   NForm,
@@ -24,6 +25,8 @@ import api from '@/api'
 import TheIcon from '@/components/icon/TheIcon.vue'
 
 defineOptions({ name: 'Webhook订阅管理' })
+
+const { t } = useI18n()
 
 const $table = ref(null)
 const queryItems = ref({})
@@ -68,7 +71,6 @@ const {
   },
   doCreate: api.createWebhook,
   doUpdate: async (data) => {
-    // 更新时不传 secret（如果为空）
     const updateData = { ...data }
     if (!updateData.secret) {
       delete updateData.secret
@@ -86,13 +88,13 @@ onMounted(() => {
 
 // 事件类型选项
 const eventOptions = [
-  { label: '新邮件 (NewMailEvent)', value: 'NewMailEvent' },
-  { label: '邮件创建 (CreatedEvent)', value: 'CreatedEvent' },
-  { label: '邮件修改 (ModifiedEvent)', value: 'ModifiedEvent' },
-  { label: '邮件删除 (DeletedEvent)', value: 'DeletedEvent' },
-  { label: '邮件移动 (MovedEvent)', value: 'MovedEvent' },
-  { label: '邮件复制 (CopiedEvent)', value: 'CopiedEvent' },
-  { label: '忙闲状态变更 (FreeBusyChangedEvent)', value: 'FreeBusyChangedEvent' },
+  { label: () => t('exchange.webhooks.event_new_mail'), value: 'NewMailEvent' },
+  { label: () => t('exchange.webhooks.event_created'), value: 'CreatedEvent' },
+  { label: () => t('exchange.webhooks.event_modified'), value: 'ModifiedEvent' },
+  { label: () => t('exchange.webhooks.event_deleted'), value: 'DeletedEvent' },
+  { label: () => t('exchange.webhooks.event_moved'), value: 'MovedEvent' },
+  { label: () => t('exchange.webhooks.event_copied'), value: 'CopiedEvent' },
+  { label: () => t('exchange.webhooks.event_freebusy'), value: 'FreeBusyChangedEvent' },
 ]
 
 const columns = [
@@ -103,13 +105,13 @@ const columns = [
     align: 'center',
   },
   {
-    title: '回调地址',
+    title: () => t('exchange.webhooks.col_callback_url'),
     key: 'url',
     width: 250,
     ellipsis: { tooltip: true },
   },
   {
-    title: '关联账户',
+    title: () => t('exchange.webhooks.col_account'),
     key: 'account_id',
     width: 120,
     render(row) {
@@ -118,7 +120,7 @@ const columns = [
     },
   },
   {
-    title: '订阅事件',
+    title: () => t('exchange.webhooks.col_events'),
     key: 'events',
     width: 200,
     render(row) {
@@ -136,7 +138,7 @@ const columns = [
     },
   },
   {
-    title: '状态',
+    title: () => t('exchange.webhooks.col_status'),
     key: 'is_active',
     width: 80,
     align: 'center',
@@ -144,18 +146,18 @@ const columns = [
       return h(
         NTag,
         { type: row.is_active ? 'success' : 'default' },
-        { default: () => (row.is_active ? '启用' : '禁用') }
+        { default: () => (row.is_active ? t('exchange.webhooks.status_active') : t('exchange.webhooks.status_inactive')) }
       )
     },
   },
   {
-    title: '备注',
+    title: () => t('exchange.webhooks.col_remark'),
     key: 'remark',
     width: 150,
     ellipsis: { tooltip: true },
   },
   {
-    title: '创建时间',
+    title: () => t('exchange.webhooks.col_created_at'),
     key: 'created_at',
     width: 160,
     render(row) {
@@ -163,7 +165,7 @@ const columns = [
     },
   },
   {
-    title: '操作',
+    title: () => t('exchange.webhooks.col_actions'),
     key: 'actions',
     width: 180,
     align: 'center',
@@ -179,7 +181,7 @@ const columns = [
               onClick: () => handleTest(row),
             },
             {
-              default: () => '测试',
+              default: () => t('exchange.webhooks.btn_test'),
               icon: renderIcon('mdi:send', { size: 14 }),
             }
           ),
@@ -190,7 +192,7 @@ const columns = [
               onClick: () => handleEdit(row),
             },
             {
-              default: () => '编辑',
+              default: () => t('exchange.webhooks.btn_edit'),
               icon: renderIcon('mdi:pencil', { size: 14 }),
             }
           ),
@@ -205,11 +207,11 @@ const columns = [
                   NButton,
                   { size: 'small', type: 'error' },
                   {
-                    default: () => '删除',
+                    default: () => t('exchange.webhooks.btn_delete'),
                     icon: renderIcon('material-symbols:delete-outline', { size: 14 }),
                   }
                 ),
-              default: () => '确定删除该Webhook订阅吗？',
+              default: () => t('exchange.webhooks.confirm_delete'),
             }
           ),
         ],
@@ -223,12 +225,12 @@ async function handleTest(row) {
   try {
     const res = await api.testWebhook(row.id)
     if (res.code === 200) {
-      $message.success('测试请求已发送')
+      $message.success(t('exchange.webhooks.test_success'))
     } else {
-      $message.error(res.msg || '测试失败')
+      $message.error(res.msg || t('exchange.webhooks.test_fail'))
     }
   } catch (err) {
-    $message.error('测试失败: ' + err.message)
+    $message.error(t('exchange.webhooks.test_fail') + ': ' + err.message)
   }
 }
 
@@ -237,32 +239,32 @@ async function handleDelete(row) {
   try {
     const res = await api.deleteWebhook(row.id)
     if (res.code === 200) {
-      $message.success('删除成功')
+      $message.success(t('exchange.webhooks.delete_success'))
       $table.value?.handleSearch()
     } else {
-      $message.error(res.msg || '删除失败')
+      $message.error(res.msg || t('exchange.webhooks.delete_fail'))
     }
   } catch (err) {
-    $message.error('删除失败: ' + err.message)
+    $message.error(t('exchange.webhooks.delete_fail') + ': ' + err.message)
   }
 }
 
 const validateForm = {
-  account_id: [{ required: true, message: '请选择关联账户', trigger: 'change', type: 'number' }],
-  url: [{ required: true, message: '请输入回调地址', trigger: 'input' }],
-  events: [{ type: 'array', required: true, message: '请至少选择一个事件', trigger: 'change' }],
+  account_id: [{ required: true, message: () => t('exchange.webhooks.validate_account_required'), trigger: 'change', type: 'number' }],
+  url: [{ required: true, message: () => t('exchange.webhooks.validate_url_required'), trigger: 'input' }],
+  events: [{ type: 'array', required: true, message: () => t('exchange.webhooks.validate_events_required'), trigger: 'change' }],
   secret: [
-    { required: true, message: '请输入签名密钥', trigger: 'input' },
-    { min: 8, message: '密钥至少8个字符', trigger: 'input' },
+    { required: true, message: () => t('exchange.webhooks.validate_secret_required'), trigger: 'input' },
+    { min: 8, message: () => t('exchange.webhooks.validate_secret_min'), trigger: 'input' },
   ],
 }
 </script>
 
 <template>
-  <CommonPage show-footer title="Webhook订阅管理">
+  <CommonPage show-footer :title="$t('exchange.webhooks.title')">
     <template #action>
       <NButton type="primary" @click="handleAdd">
-        <TheIcon icon="material-symbols:add" :size="18" class="mr-5" />创建Webhook
+        <TheIcon icon="material-symbols:add" :size="18" class="mr-5" />{{ $t('exchange.webhooks.add') }}
       </NButton>
     </template>
 
@@ -289,57 +291,57 @@ const validateForm = {
         :model="modalForm"
         :rules="validateForm"
       >
-        <NFormItem label="关联账户" path="account_id">
+        <NFormItem :label="$t('exchange.webhooks.form_account')" path="account_id">
           <NSelect
             v-model:value="modalForm.account_id"
             :options="accountOptions"
-            placeholder="选择关联的邮箱账户"
+            :placeholder="$t('exchange.webhooks.placeholder_account')"
             clearable
           />
         </NFormItem>
-        <NFormItem label="回调地址" path="url">
+        <NFormItem :label="$t('exchange.webhooks.form_url')" path="url">
           <NInput
             v-model:value="modalForm.url"
-            placeholder="https://your-server.com/webhook"
+            :placeholder="$t('exchange.webhooks.placeholder_url')"
             clearable
           />
         </NFormItem>
-        <NFormItem label="订阅事件" path="events">
+        <NFormItem :label="$t('exchange.webhooks.form_events')" path="events">
           <NSelect
             v-model:value="modalForm.events"
             multiple
             :options="eventOptions"
-            placeholder="选择要订阅的事件"
+            :placeholder="$t('exchange.webhooks.placeholder_events')"
           />
         </NFormItem>
-        <NFormItem label="签名密钥" path="secret">
+        <NFormItem :label="$t('exchange.webhooks.form_secret')" path="secret">
           <NInput
             v-model:value="modalForm.secret"
             type="password"
             show-password-on="click"
-            placeholder="用于验签的密钥（至少8位）"
+            :placeholder="$t('exchange.webhooks.placeholder_secret')"
           />
           <template #feedback>
             <span v-if="modalAction === 'edit'" style="color: #999; font-size: 12px">
-              留空则保持原密钥不变
+              {{ $t('exchange.webhooks.secret_edit_hint') }}
             </span>
           </template>
         </NFormItem>
-        <NFormItem label="启用状态" path="is_active">
+        <NFormItem :label="$t('exchange.webhooks.form_active')" path="is_active">
           <NSwitch v-model:value="modalForm.is_active" />
         </NFormItem>
-        <NFormItem label="备注" path="remark">
-          <NInput v-model:value="modalForm.remark" type="textarea" clearable placeholder="可选" />
+        <NFormItem :label="$t('exchange.webhooks.form_remark')" path="remark">
+          <NInput v-model:value="modalForm.remark" type="textarea" clearable :placeholder="$t('exchange.webhooks.placeholder_remark')" />
         </NFormItem>
       </NForm>
 
       <template #tip>
-        <NAlert type="info" title="Webhook 说明" class="mt-16">
-          <template #header>回调地址要求</template>
+        <NAlert type="info" :title="$t('exchange.webhooks.tip_title')" class="mt-16">
+          <template #header>{{ $t('exchange.webhooks.tip_header') }}</template>
           <ul style="margin: 0; padding-left: 16px">
-            <li>回调地址必须是公网可访问的 HTTPS 地址</li>
-            <li>不支持本地地址（localhost、127.0.0.1）</li>
-            <li>私网地址根据配置可能受限</li>
+            <li>{{ $t('exchange.webhooks.tip_1') }}</li>
+            <li>{{ $t('exchange.webhooks.tip_2') }}</li>
+            <li>{{ $t('exchange.webhooks.tip_3') }}</li>
           </ul>
         </NAlert>
       </template>
