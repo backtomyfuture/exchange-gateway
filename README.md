@@ -25,7 +25,7 @@ cd exchange-gateway
 
 # Generate secrets & configure
 ./scripts/init-secrets.sh
-cp .env.example .env          # edit DATABASE_URL, EXCHANGE_SERVER, etc.
+cp .env.example .env          # edit EXCHANGE_SERVER etc. (NO secrets in .env)
 
 # Launch (includes MySQL + Redis)
 docker compose --profile local-db --profile local-redis up -d

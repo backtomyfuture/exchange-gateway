@@ -2,21 +2,54 @@
 set -e
 
 # =============================================================================
-# FastAPI 应用启动脚本
-# 支持信号处理、优雅关闭、健康检查
+# Exchange Gateway - Entrypoint
+# Reads secrets from Docker Secrets files, then starts Gunicorn.
 # =============================================================================
 
-# 配置
-# 配置
+# --- Helper: read secret from file or env var ---
+read_secret() {
+    local name="$1"
+    local file_var="${name}_FILE"
+    local file_path="${!file_var}"
+    if [ -n "$file_path" ] && [ -f "$file_path" ]; then
+        cat "$file_path" | tr -d '\n'
+    else
+        echo "${!name}"
+    fi
+}
+
+# --- Load secrets ---
+SECRET_KEY=$(read_secret SECRET_KEY)
+EXCHANGE_ENCRYPTION_KEY=$(read_secret EXCHANGE_ENCRYPTION_KEY)
+DB_PASSWORD=$(read_secret DB_PASSWORD)
+
+# Auto-generate dev secrets if missing
+if [ -z "$SECRET_KEY" ]; then
+    SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+    echo "WARNING: SECRET_KEY not set, auto-generated (dev only)"
+fi
+if [ -z "$EXCHANGE_ENCRYPTION_KEY" ]; then
+    EXCHANGE_ENCRYPTION_KEY=$(python3 -c "import base64,os; print(base64.b64encode(os.urandom(32)).decode())")
+    echo "WARNING: EXCHANGE_ENCRYPTION_KEY not set, auto-generated (dev only)"
+fi
+
+export SECRET_KEY EXCHANGE_ENCRYPTION_KEY
+
+# --- Build DATABASE_URL from components if not set ---
+if [ -z "$DATABASE_URL" ] && [ -z "$MYSQL_URL" ]; then
+    _host="${DB_HOST:-mysql}"
+    _port="${DB_PORT:-3306}"
+    _name="${DB_NAME:-exchange_gateway}"
+    _user="${DB_USER:-root}"
+    _pass="${DB_PASSWORD:-}"
+    export DATABASE_URL="mysql://${_user}:${_pass}@${_host}:${_port}/${_name}"
+fi
+
+# --- Config ---
 APP_MODULE="${APP_MODULE:-app:app}"
 WORKERS="${WORKERS:-1}"
-
-# Railway 最佳实践：优先使用 $PORT 环境变量，如果未设置则默认为 8000
-# 这里的端口必须与 railway.json 中的 deploy.port 保持一致
 ACTUAL_PORT="${PORT:-8000}"
 BIND="0.0.0.0:${ACTUAL_PORT}"
-
-echo "DEBUG: BIND is set to ${BIND}"
 WORKER_CLASS="${WORKER_CLASS:-uvicorn.workers.UvicornWorker}"
 TIMEOUT="${TIMEOUT:-120}"
 GRACEFUL_TIMEOUT="${GRACEFUL_TIMEOUT:-30}"
@@ -28,91 +61,44 @@ echo "=========================================="
 echo "  Workers:     ${WORKERS}"
 echo "  Bind:        ${BIND}"
 echo "  Timeout:     ${TIMEOUT}s"
-echo "=========================================="
-echo "Database Configuration Debug:"
-echo "  MYSQL_URL:   ${MYSQL_URL:-(not set)}"
-echo "  DATABASE_URL: ${DATABASE_URL:-(not set)}"
-echo "  DB_HOST:     ${DB_HOST:-(not set)}"
+echo "  DB Host:     ${DB_HOST:-(from URL)}"
 echo "=========================================="
 
-# 等待数据库就绪
-# 如果没有 DB_HOST 但有 DATABASE_URL 或 MYSQL_URL，尝试解析它们
-if [ -z "$DB_HOST" ]; then
-    URL="${MYSQL_URL:-$DATABASE_URL}"
-    if [ -n "$URL" ]; then
-        echo "Parsing database connection from URL..."
-        # 提取 host 和 port (格式: mysql://user:pass@host:port/db)
-        DB_HOST=$(echo "$URL" | sed -e 's|.*@||' -e 's|/.*||' -e 's|:.*||')
-        DB_PORT=$(echo "$URL" | grep -o ':[0-9]\+' | tail -n1 | cut -d: -f2)
-        DB_PORT="${DB_PORT:-3306}"
-    fi
+# --- Wait for database ---
+URL="${MYSQL_URL:-$DATABASE_URL}"
+if [ -n "$URL" ] && [ -z "$DB_HOST" ]; then
+    DB_HOST=$(echo "$URL" | sed -e 's|.*@||' -e 's|/.*||' -e 's|:.*||')
+    DB_PORT=$(echo "$URL" | grep -o ':[0-9]\+' | tail -n1 | cut -d: -f2)
 fi
+DB_PORT="${DB_PORT:-3306}"
 
 if [ -n "$DB_HOST" ]; then
-    echo "Waiting for database at ${DB_HOST}:${DB_PORT:-3306}..."
-    
-    max_retries=30
-    retry_count=0
-    
-    while ! nc -z "${DB_HOST}" "${DB_PORT:-3306}" 2>/dev/null; do
-        retry_count=$((retry_count + 1))
-        if [ $retry_count -ge $max_retries ]; then
-            echo "ERROR: Database connection timeout after ${max_retries} attempts"
-            exit 1
-        fi
-        echo "  Attempt ${retry_count}/${max_retries}..."
+    echo "Waiting for database at ${DB_HOST}:${DB_PORT}..."
+    retries=0
+    while ! nc -z "${DB_HOST}" "${DB_PORT}" 2>/dev/null; do
+        retries=$((retries + 1))
+        [ $retries -ge 30 ] && echo "ERROR: DB timeout" && exit 1
+        echo "  Attempt ${retries}/30..."
         sleep 2
     done
-    
     echo "Database is ready!"
 fi
 
-# 生成缺失的安全密钥
-if [ -z "$SECRET_KEY" ]; then
-    echo "WARNING: SECRET_KEY not set, generating one..."
-    export SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
-    echo "  Generated SECRET_KEY: ${SECRET_KEY:0:16}..."
-fi
-
-if [ -z "$EXCHANGE_ENCRYPTION_KEY" ]; then
-    echo "WARNING: EXCHANGE_ENCRYPTION_KEY not set, generating one..."
-    # 注意：EXCHANGE_ENCRYPTION_KEY 需要 Base64 编码的 32 字节密钥
-    export EXCHANGE_ENCRYPTION_KEY=$(python3 -c "import base64, os; print(base64.b64encode(os.urandom(32)).decode())")
-    echo "  Generated EXCHANGE_ENCRYPTION_KEY: ${EXCHANGE_ENCRYPTION_KEY:0:16}..."
-fi
-
-# 验证 Exchange 配置（DEV_MODE 时跳过）
-if [ "${DEV_MODE:-false}" != "true" ] && [ "${DEV_MODE:-false}" != "1" ] && [ "${DEV_MODE:-false}" != "yes" ]; then
+# --- Validate Exchange config (skip in DEV_MODE) ---
+if [ "${DEV_MODE:-false}" != "true" ] && [ "${DEV_MODE:-false}" != "1" ]; then
     if [ -z "$EXCHANGE_SERVER" ] || [ -z "$EXCHANGE_DOMAIN" ] || [ -z "$EXCHANGE_EMAIL_SUFFIX" ]; then
-        echo "ERROR: Exchange configuration is incomplete!"
-        [ -z "$EXCHANGE_SERVER" ] && echo "  - EXCHANGE_SERVER is required"
-        [ -z "$EXCHANGE_DOMAIN" ] && echo "  - EXCHANGE_DOMAIN is required"
-        [ -z "$EXCHANGE_EMAIL_SUFFIX" ] && echo "  - EXCHANGE_EMAIL_SUFFIX is required"
-        echo ""
-        echo "Please configure these environment variables in your .env file:"
-        echo "  EXCHANGE_SERVER=your-exchange-server"
-        echo "  EXCHANGE_DOMAIN=your-domain"
-        echo "  EXCHANGE_EMAIL_SUFFIX=@your-domain.com"
+        echo "ERROR: Exchange configuration incomplete (set EXCHANGE_SERVER, EXCHANGE_DOMAIN, EXCHANGE_EMAIL_SUFFIX)"
         exit 1
     fi
-    echo "Exchange configuration validated: ${EXCHANGE_SERVER}"
-else
-    echo "WARNING: DEV_MODE enabled, Exchange configuration validation skipped"
 fi
 
-# 执行数据库迁移（在启动 gunicorn 之前）
-# 只有在 AUTO_MIGRATE=true 或未设置时才执行
+# --- Database migration ---
 if [ "${AUTO_MIGRATE:-true}" = "true" ] || [ "${AUTO_MIGRATE:-true}" = "1" ]; then
     echo "Running database migration..."
     python -m app.utils.db_migrate || echo "Warning: Migration failed, will retry in app startup"
 fi
 
-# 启动应用
-echo "Starting Gunicorn on ${BIND}..."
-echo "  APP_MODULE:  ${APP_MODULE}"
-echo "  WORKERS:     ${WORKERS}"
-echo "  TIMEOUT:     ${TIMEOUT}s"
-
+# --- Start ---
 exec gunicorn "${APP_MODULE}" \
     --workers "${WORKERS}" \
     --worker-class "${WORKER_CLASS}" \

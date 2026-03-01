@@ -57,8 +57,20 @@ def parse_database_url(database_url: str) -> dict:
     }
 
 
-# DATABASE_URL: 优先使用 MYSQL_URL (Railway) 或 DATABASE_URL
-DATABASE_URL = os.getenv("MYSQL_URL") or os.getenv("DATABASE_URL", "")
+def _build_database_url() -> str:
+    """Build DATABASE_URL from env. Priority: MYSQL_URL > DATABASE_URL > components."""
+    url = os.getenv("MYSQL_URL") or os.getenv("DATABASE_URL")
+    if url:
+        return url
+    host = os.getenv("DB_HOST", "localhost")
+    port = os.getenv("DB_PORT", "3306")
+    name = os.getenv("DB_NAME", "exchange_gateway")
+    user = os.getenv("DB_USER", "root")
+    password = get_secret("DB_PASSWORD", _DEV_DB_PASSWORD if DEV_MODE else "")
+    return f"mysql://{user}:{password}@{host}:{port}/{name}"
+
+
+DATABASE_URL = _build_database_url()
 
 
 class Settings(BaseSettings):

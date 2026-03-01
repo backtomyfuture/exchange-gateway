@@ -6,7 +6,7 @@
 
 ```bash
 ./scripts/init-secrets.sh
-cp .env.example .env   # set DATABASE_URL password to match secrets/db_password
+cp .env.example .env   # edit Exchange server config (NO secrets needed in .env)
 docker compose --profile local-db --profile local-redis up -d
 ```
 
@@ -43,7 +43,7 @@ cd web && pnpm dev                      # Vite dev server (port 3000)
 ### Gotchas
 
 - MySQL and Redis use Docker Compose profiles — pass `--profile local-db --profile local-redis`.
-- `DATABASE_URL` in `.env` must use the same password as `secrets/db_password`.
+- `.env` has NO secrets — passwords/keys are read from `secrets/` directory via Docker Secrets.
 - `uvicorn --reload` locally needs `--reload-exclude ".docker-data/*"`.
 - `pnpm install` may warn about ignored build scripts (`es5-ext`, `esbuild`, `vue-demi`); safe to ignore.
 - Frontend `pnpm lint` reports ~600 pre-existing prettier/formatting errors; these do not block the build.
