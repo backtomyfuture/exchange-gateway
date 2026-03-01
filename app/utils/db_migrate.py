@@ -42,13 +42,32 @@ def get_tortoise_config():
     # 优先解析 MYSQL_URL / DATABASE_URL
     database_url = os.getenv("MYSQL_URL") or os.getenv("DATABASE_URL")
 
-    # DEV_MODE 默认值
+    # 从分离的组件 + secret 文件构建
+    if not database_url:
+        host = os.getenv("DB_HOST", "")
+        if host:
+            port = os.getenv("DB_PORT", "3306")
+            name = os.getenv("DB_NAME", "exchange_gateway")
+            user = os.getenv("DB_USER", "root")
+            pw_file = os.getenv("DB_PASSWORD_FILE", "")
+            pw = ""
+            if pw_file:
+                try:
+                    with open(pw_file) as f:
+                        pw = f.read().strip()
+                except FileNotFoundError:
+                    pass
+            if not pw:
+                pw = os.getenv("DB_PASSWORD", "")
+            database_url = f"mysql://{user}:{pw}@{host}:{port}/{name}"
+
+    # DEV_MODE fallback
     if not database_url:
         dev_mode = os.getenv("DEV_MODE", "false").lower() in ("true", "1", "yes")
         if dev_mode:
             database_url = "mysql://root:dev_password@localhost:3306/exchange_gateway"
         else:
-            print("ERROR: DATABASE_URL or MYSQL_URL must be set in production")
+            print("ERROR: Set DATABASE_URL or DB_HOST+DB_PASSWORD_FILE")
             sys.exit(1)
 
     # 动态检测引擎

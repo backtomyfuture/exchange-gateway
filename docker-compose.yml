@@ -2,17 +2,37 @@
 #
 # Quick Start:
 #   ./scripts/init-secrets.sh       # Generate secrets (first time only)
-#   cp .env.example .env && edit    # Configure Exchange server
+#   cp .env.example .env && edit    # Configure Exchange server, DB host, etc.
 #   docker compose --profile local-db --profile local-redis up -d
 #
-# With external MySQL/Redis:
-#   docker compose up -d            # Only app, workers, nginx
+# .env has ZERO secrets — all passwords/keys come from ./secrets/ directory.
 
 x-default-logging: &default-logging
   driver: json-file
   options:
     max-size: "50m"
     max-file: "3"
+
+x-app-secrets: &app-secrets
+  - secret_key
+  - exchange_encryption_key
+  - db_password
+
+x-app-env: &app-env
+  ENV: ${ENV:-dev}
+  DB_HOST: ${DB_HOST:-mysql}
+  DB_PORT: ${DB_PORT:-3306}
+  DB_NAME: ${DB_NAME:-exchange_gateway}
+  DB_USER: ${DB_USER:-root}
+  DB_PASSWORD_FILE: /run/secrets/db_password
+  SECRET_KEY_FILE: /run/secrets/secret_key
+  EXCHANGE_ENCRYPTION_KEY_FILE: /run/secrets/exchange_encryption_key
+  EXCHANGE_SERVER: ${EXCHANGE_SERVER:-}
+  EXCHANGE_DOMAIN: ${EXCHANGE_DOMAIN:-}
+  EXCHANGE_EMAIL_SUFFIX: ${EXCHANGE_EMAIL_SUFFIX:-}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  WEBHOOK_ALLOW_PRIVATE_URLS: "true"
+  LOGS_ROOT: /var/log/app
 
 secrets:
   secret_key:
@@ -66,21 +86,10 @@ services:
     container_name: exchange-gateway-app
     restart: unless-stopped
     environment:
-      - ENV=${ENV:-dev}
-      - PORT=${BACKEND_PORT:-8000}
-      - DATABASE_URL=${DATABASE_URL:-mysql://root:root123@mysql:3306/exchange_gateway}
-      - SECRET_KEY_FILE=/run/secrets/secret_key
-      - WORKERS=${WORKERS:-2}
-      - EXCHANGE_SERVER=${EXCHANGE_SERVER}
-      - EXCHANGE_DOMAIN=${EXCHANGE_DOMAIN}
-      - EXCHANGE_EMAIL_SUFFIX=${EXCHANGE_EMAIL_SUFFIX}
-      - EXCHANGE_ENCRYPTION_KEY_FILE=/run/secrets/exchange_encryption_key
-      - WEBHOOK_ALLOW_PRIVATE_URLS=true
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - LOGS_ROOT=/var/log/app
-    secrets:
-      - secret_key
-      - exchange_encryption_key
+      <<: *app-env
+      PORT: ${BACKEND_PORT:-8000}
+      WORKERS: ${WORKERS:-2}
+    secrets: *app-secrets
     ports:
       - "18001:${BACKEND_PORT:-8000}"
     depends_on:
@@ -96,7 +105,6 @@ services:
       - ./pyproject.toml:/opt/app/pyproject.toml:ro
       - ./migrations:/opt/app/migrations
       - ./tests:/opt/app/tests:ro
-      - ./pytest.ini:/opt/app/pytest.ini:ro
     networks:
       - backend
       - frontend
@@ -121,17 +129,9 @@ services:
     restart: unless-stopped
     entrypoint: ["/opt/app/entrypoint-worker.sh"]
     environment:
-      - ENV=${ENV:-dev}
-      - PORT=${BACKEND_PORT:-8000}
-      - DATABASE_URL=${DATABASE_URL:-mysql://root:root123@mysql:3306/exchange_gateway}
-      - SECRET_KEY_FILE=/run/secrets/secret_key
-      - EXCHANGE_ENCRYPTION_KEY_FILE=/run/secrets/exchange_encryption_key
-      - WEBHOOK_ALLOW_PRIVATE_URLS=true
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - LOGS_ROOT=/var/log/app
-    secrets:
-      - secret_key
-      - exchange_encryption_key
+      <<: *app-env
+      PORT: ${BACKEND_PORT:-8000}
+    secrets: *app-secrets
     depends_on:
       mysql:
         condition: service_healthy
@@ -170,18 +170,8 @@ services:
     entrypoint: ["/opt/app/entrypoint-arq.sh"]
     command: []
     environment:
-      - ENV=${ENV:-dev}
-      - DATABASE_URL=${DATABASE_URL:-mysql://root:root123@mysql:3306/exchange_gateway}
-      - SECRET_KEY_FILE=/run/secrets/secret_key
-      - EXCHANGE_ENCRYPTION_KEY_FILE=/run/secrets/exchange_encryption_key
-      - EXCHANGE_SERVER=${EXCHANGE_SERVER}
-      - EXCHANGE_DOMAIN=${EXCHANGE_DOMAIN}
-      - EXCHANGE_EMAIL_SUFFIX=${EXCHANGE_EMAIL_SUFFIX}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - LOGS_ROOT=/var/log/app
-    secrets:
-      - secret_key
-      - exchange_encryption_key
+      <<: *app-env
+    secrets: *app-secrets
     depends_on:
       mysql:
         condition: service_healthy
@@ -237,9 +227,9 @@ services:
     container_name: exchange-gateway-nginx
     restart: unless-stopped
     environment:
-      - NGINX_ENV=${ENV:-dev}
-      - BACKEND_HOST=app
-      - BACKEND_PORT=${BACKEND_PORT:-8000}
+      NGINX_ENV: ${ENV:-dev}
+      BACKEND_HOST: app
+      BACKEND_PORT: ${BACKEND_PORT:-8000}
     ports:
       - "${NGINX_PORT:-80}:8080"
     depends_on:
