@@ -5,7 +5,8 @@
 ### Running the Application
 
 ```bash
-./scripts/init-secrets.sh
+./scripts/init-secrets.sh   # Linux/macOS
+python scripts/init-secrets.py   # Windows
 cp .env.example .env   # edit Exchange server config (NO secrets needed in .env)
 docker compose --profile local-db --profile local-redis up -d
 ```
