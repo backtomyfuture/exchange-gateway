@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   NStatistic,
   NCard,
@@ -14,7 +15,9 @@ import CommonPage from '@/components/page/CommonPage.vue'
 import api from '@/api'
 import TheIcon from '@/components/icon/TheIcon.vue'
 
-defineOptions({ name: '使用统计' })
+defineOptions({ name: 'UsageStats' })
+
+const { t } = useI18n()
 
 const stats = ref({
   total_count: 0,
@@ -46,18 +49,18 @@ async function loadStats() {
 }
 
 const columns = [
-    { title: '日期', key: 'date' },
-    { title: '总请求', key: 'total' },
-    { title: '成功', key: 'success' },
-    { title: '失败', key: 'failed' },
+    { title: () => t('exchange.stats.col_date'), key: 'date' },
+    { title: () => t('exchange.stats.col_total'), key: 'total' },
+    { title: () => t('exchange.stats.col_success'), key: 'success' },
+    { title: () => t('exchange.stats.col_failed'), key: 'failed' },
 ]
 </script>
 
 <template>
-  <CommonPage show-footer title="使用统计">
+  <CommonPage show-footer :title="$t('exchange.stats.title')">
     <template #action>
       <NButton type="primary" :loading="loading" @click="loadStats">
-        <TheIcon icon="mdi:refresh" :size="18" class="mr-5" />刷新
+        <TheIcon icon="mdi:refresh" :size="18" class="mr-5" />{{ $t('exchange.stats.btn_refresh') }}
       </NButton>
     </template>
 
@@ -65,7 +68,7 @@ const columns = [
     <NGrid :cols="4" :x-gap="16" :y-gap="16">
       <NGi>
         <NCard>
-          <NStatistic label="总请求数" :value="stats.total_count || 0">
+          <NStatistic :label="$t('exchange.stats.stat_total')" :value="stats.total_count || 0">
             <template #prefix>
               <TheIcon icon="mdi:email-multiple" :size="24" style="color: #2080f0" />
             </template>
@@ -74,7 +77,7 @@ const columns = [
       </NGi>
       <NGi>
         <NCard>
-          <NStatistic label="成功请求" :value="stats.success_count || 0">
+          <NStatistic :label="$t('exchange.stats.stat_success')" :value="stats.success_count || 0">
             <template #prefix>
               <TheIcon icon="mdi:check-circle" :size="24" style="color: #18a058" />
             </template>
@@ -83,7 +86,7 @@ const columns = [
       </NGi>
       <NGi>
         <NCard>
-          <NStatistic label="失败请求" :value="stats.failed_count || 0">
+          <NStatistic :label="$t('exchange.stats.stat_failed')" :value="stats.failed_count || 0">
             <template #prefix>
               <TheIcon icon="mdi:close-circle" :size="24" style="color: #d03050" />
             </template>
@@ -92,7 +95,7 @@ const columns = [
       </NGi>
       <NGi>
         <NCard>
-          <NStatistic label="成功率" :value="stats.success_rate || 0">
+          <NStatistic :label="$t('exchange.stats.stat_success_rate')" :value="stats.success_rate || 0">
             <template #prefix>
               <TheIcon icon="mdi:chart-arc" :size="24" style="color: #18a058" />
             </template>
@@ -109,7 +112,7 @@ const columns = [
     <NGrid :cols="3" :x-gap="16" :y-gap="16" style="margin-top: 16px">
       <NGi>
         <NCard>
-          <NStatistic label="今日请求" :value="stats.today_count || 0">
+          <NStatistic :label="$t('exchange.stats.stat_today')" :value="stats.today_count || 0">
             <template #prefix>
               <TheIcon icon="mdi:calendar-today" :size="24" style="color: #f0a020" />
             </template>
@@ -118,7 +121,7 @@ const columns = [
       </NGi>
       <NGi>
         <NCard>
-          <NStatistic label="活跃账户" :value="stats.active_accounts || 0">
+          <NStatistic :label="$t('exchange.stats.stat_active_accounts')" :value="stats.active_accounts || 0">
             <template #prefix>
               <TheIcon icon="mdi:account-check" :size="24" style="color: #2080f0" />
             </template>
@@ -127,7 +130,7 @@ const columns = [
       </NGi>
       <NGi>
         <NCard>
-          <NStatistic label="有效密钥" :value="stats.active_api_keys || 0">
+          <NStatistic :label="$t('exchange.stats.stat_active_keys')" :value="stats.active_api_keys || 0">
             <template #prefix>
               <TheIcon icon="mdi:key-variant" :size="24" style="color: #18a058" />
             </template>
@@ -136,7 +139,7 @@ const columns = [
       </NGi>
     </NGrid>
 
-    <NCard title="每日趋势 (最近30天)" style="margin-top: 16px" size="small">
+    <NCard :title="$t('exchange.stats.daily_trend')" style="margin-top: 16px" size="small">
         <n-data-table
             :columns="columns"
             :data="stats.daily_stats || []"

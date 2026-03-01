@@ -1,4 +1,5 @@
 import { isNullOrUndef } from '@/utils'
+import i18n from '~/i18n'
 
 export function setupMessage(NMessage) {
   let loadingMessage = null
@@ -66,8 +67,8 @@ export function setupDialog(NDialog) {
     const showIcon = !isNullOrUndef(option.title)
     return NDialog[option.type || 'warning']({
       showIcon,
-      positiveText: '确定',
-      negativeText: '取消',
+      positiveText: i18n.global.t('common.dialog.confirm'),
+      negativeText: i18n.global.t('common.dialog.cancel'),
       onPositiveClick: option.confirm,
       onNegativeClick: option.cancel,
       onMaskClick: option.cancel,

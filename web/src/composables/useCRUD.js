@@ -1,15 +1,16 @@
 import { isNullOrWhitespace } from '@/utils'
+import i18n from '~/i18n'
 
 const ACTIONS = {
-  view: '查看',
-  edit: '编辑',
-  add: '新增',
+  view: () => i18n.global.t('common.buttons.view'),
+  edit: () => i18n.global.t('common.buttons.edit'),
+  add: () => i18n.global.t('common.buttons.add'),
 }
 
 export default function ({ name, initForm = {}, doCreate, doDelete, doUpdate, refresh }) {
   const modalVisible = ref(false)
   const modalAction = ref('')
-  const modalTitle = computed(() => ACTIONS[modalAction.value] + name)
+  const modalTitle = computed(() => ACTIONS[modalAction.value]() + name)
   const modalLoading = ref(false)
   const modalFormRef = ref(null)
   const modalForm = ref({ ...initForm })
@@ -49,14 +50,14 @@ export default function ({ name, initForm = {}, doCreate, doDelete, doUpdate, re
           cb: () => {
             callbacks.forEach((callback) => callback && callback())
           },
-          msg: () => $message.success('新增成功'),
+          msg: () => $message.success(i18n.global.t('common.text.add_success')),
         },
         edit: {
           api: () => doUpdate(modalForm.value),
           cb: () => {
             callbacks.forEach((callback) => callback && callback())
           },
-          msg: () => $message.success('编辑成功'),
+          msg: () => $message.success(i18n.global.t('common.text.edit_success')),
         },
       }
       const action = actions[modalAction.value]
@@ -80,7 +81,7 @@ export default function ({ name, initForm = {}, doCreate, doDelete, doUpdate, re
     try {
       modalLoading.value = true
       const data = await doDelete(params)
-      $message.success('删除成功')
+      $message.success(i18n.global.t('common.text.delete_success'))
       modalLoading.value = false
       refresh(data)
     } catch (error) {

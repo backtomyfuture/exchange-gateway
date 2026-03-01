@@ -2,6 +2,9 @@
 import '@wangeditor/editor/dist/css/style.css'
 import { onBeforeUnmount, ref, shallowRef, watch, computed } from 'vue'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps({
   modelValue: {
@@ -10,7 +13,7 @@ const props = defineProps({
   },
   placeholder: {
     type: String,
-    default: '请输入内容...',
+    default: '',
   },
   height: {
     type: String,
@@ -29,7 +32,7 @@ const editorRef = shallowRef()
 
 // 编辑器配置
 const editorConfig = {
-  placeholder: props.placeholder,
+  placeholder: props.placeholder || t('common.editor.placeholder'),
   MENU_CONF: {
     // 上传图片时，自动转为 base64
     uploadImage: {

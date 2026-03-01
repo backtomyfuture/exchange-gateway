@@ -2,6 +2,9 @@
 import { ref } from 'vue'
 import { watchDebounced } from '@vueuse/core'
 import { NInput, NPopover } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 import TheIcon from './TheIcon.vue'
 import iconData from '@/assets/js/icons'
@@ -36,7 +39,7 @@ watchDebounced(
   <div class="w-full">
     <NPopover trigger="click" placement="bottom-start">
       <template #trigger>
-        <NInput v-model:value="choosed" placeholder="请输入图标名称" @update:value="filterIcons">
+        <NInput v-model:value="choosed" :placeholder="t('common.icon_picker.placeholder')" @update:value="filterIcons">
           <template #prefix>
             <span class="i-mdi:magnify text-18" />
           </template>
@@ -46,11 +49,11 @@ watchDebounced(
         </NInput>
       </template>
       <template #footer>
-        更多图标去
+        {{ t('common.icon_picker.more_icons') }}
         <a class="text-blue" target="_blank" href="https://icones.js.org/collection/all">
           Icones
         </a>
-        查看
+        {{ t('common.icon_picker.view') }}
       </template>
       <ul v-if="icons.length" class="h-150 w-300 overflow-y-scroll">
         <li

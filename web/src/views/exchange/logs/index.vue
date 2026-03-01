@@ -1,5 +1,6 @@
 <script setup>
 import { h, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   NButton,
   NTag,
@@ -18,7 +19,9 @@ import CrudTable from '@/components/table/CrudTable.vue'
 import { formatDate, renderIcon } from '@/utils'
 import api from '@/api'
 
-defineOptions({ name: '邮件日志' })
+defineOptions({ name: 'EmailLogs' })
+
+const { t } = useI18n()
 
 const $table = ref(null)
 const queryItems = ref({})
@@ -41,46 +44,30 @@ async function loadStats() {
 }
 
 const actionOptions = [
-  { label: '全部', value: null },
-  { label: '发送', value: 'send' },
-  { label: '接收', value: 'receive' },
-  { label: '同步', value: 'sync' },
-  { label: '搜索', value: 'search' },
-  { label: '草稿', value: 'create_draft' },
-  { label: '文件夹', value: 'folders' },
-  { label: '已读', value: 'mark_read' },
-  { label: '未读', value: 'mark_unread' },
-  { label: '回复', value: 'reply' },
-  { label: '转发', value: 'forward' },
-  { label: '删除', value: 'delete' },
+  { label: () => t('exchange.logs.action_all'), value: null },
+  { label: () => t('exchange.logs.action_send'), value: 'send' },
+  { label: () => t('exchange.logs.action_receive'), value: 'receive' },
+  { label: () => t('exchange.logs.action_sync'), value: 'sync' },
+  { label: () => t('exchange.logs.action_search'), value: 'search' },
+  { label: () => t('exchange.logs.action_draft'), value: 'create_draft' },
+  { label: () => t('exchange.logs.action_folders'), value: 'folders' },
+  { label: () => t('exchange.logs.action_read'), value: 'mark_read' },
+  { label: () => t('exchange.logs.action_unread'), value: 'mark_unread' },
+  { label: () => t('exchange.logs.action_reply'), value: 'reply' },
+  { label: () => t('exchange.logs.action_forward'), value: 'forward' },
+  { label: () => t('exchange.logs.action_delete'), value: 'delete' },
 ]
 
 const statusOptions = [
-  { label: '全部', value: null },
-  { label: '成功', value: 'success' },
-  { label: '失败', value: 'failed' },
-  { label: '进行中', value: 'pending' },
+  { label: () => t('exchange.logs.status_all'), value: null },
+  { label: () => t('exchange.logs.status_success'), value: 'success' },
+  { label: () => t('exchange.logs.status_failed'), value: 'failed' },
+  { label: () => t('exchange.logs.status_pending'), value: 'pending' },
 ]
-
-const actionMap = {
-  send: '发送',
-  receive: '接收',
-  sync: '同步',
-  search: '搜索',
-  create_draft: '草稿',
-  folders: '文件夹',
-  mark_read: '已读',
-  mark_unread: '未读',
-  reply: '回复',
-  forward: '转发',
-  delete: '删除',
-  move: '移动',
-  list_folders: '文件夹', // Legacy?
-}
 
 const columns = [
   {
-    title: '操作类型',
+    title: () => t('exchange.logs.col_action'),
     key: 'action',
     width: 100,
     align: 'center',
@@ -93,21 +80,36 @@ const columns = [
         search: 'warning',
         delete: 'error',
       }
+      const actionKeyMap = {
+        send: 'exchange.logs.action_send',
+        receive: 'exchange.logs.action_receive',
+        sync: 'exchange.logs.action_sync',
+        search: 'exchange.logs.action_search',
+        create_draft: 'exchange.logs.action_draft',
+        folders: 'exchange.logs.action_folders',
+        mark_read: 'exchange.logs.action_read',
+        mark_unread: 'exchange.logs.action_unread',
+        reply: 'exchange.logs.action_reply',
+        forward: 'exchange.logs.action_forward',
+        delete: 'exchange.logs.action_delete',
+        move: 'exchange.logs.action_move',
+        list_folders: 'exchange.logs.action_folders',
+      }
       return h(
         NTag,
         { type: colors[row.action] || 'default', size: 'small' },
-        { default: () => actionMap[row.action] || row.action }
+        { default: () => actionKeyMap[row.action] ? t(actionKeyMap[row.action]) : row.action }
       )
     },
   },
   {
-    title: '邮箱账户',
+    title: () => t('exchange.logs.col_account_email'),
     key: 'account_email',
     width: 180,
     ellipsis: { tooltip: true },
   },
   {
-    title: 'API密钥',
+    title: () => t('exchange.logs.col_api_key'),
     key: 'api_key_name',
     width: 120,
     align: 'center',
@@ -116,7 +118,7 @@ const columns = [
     },
   },
   {
-    title: '主题',
+    title: () => t('exchange.logs.col_subject'),
     key: 'subject',
     width: 200,
     ellipsis: { tooltip: true },
@@ -125,7 +127,7 @@ const columns = [
     },
   },
   {
-    title: '收件人',
+    title: () => t('exchange.logs.col_recipients'),
     key: 'recipients',
     width: 200,
     ellipsis: { tooltip: true },
@@ -135,7 +137,7 @@ const columns = [
     },
   },
   {
-    title: '状态',
+    title: () => t('exchange.logs.col_status'),
     key: 'status',
     width: 80,
     align: 'center',
@@ -145,20 +147,20 @@ const columns = [
         failed: 'error',
         pending: 'warning',
       }
-      const labels = {
-        success: '成功',
-        failed: '失败',
-        pending: '进行中',
+      const statusKeyMap = {
+        success: 'exchange.logs.status_success',
+        failed: 'exchange.logs.status_failed',
+        pending: 'exchange.logs.status_pending',
       }
       return h(
         NTag,
         { type: colors[row.status] || 'default', size: 'small' },
-        { default: () => labels[row.status] || row.status }
+        { default: () => statusKeyMap[row.status] ? t(statusKeyMap[row.status]) : row.status }
       )
     },
   },
   {
-    title: '请求IP',
+    title: () => t('exchange.logs.col_request_ip'),
     key: 'request_ip',
     width: 120,
     align: 'center',
@@ -167,7 +169,7 @@ const columns = [
     },
   },
   {
-    title: '时间',
+    title: () => t('exchange.logs.col_time'),
     key: 'created_at',
     width: 160,
     align: 'center',
@@ -176,7 +178,7 @@ const columns = [
     },
   },
   {
-    title: '错误信息',
+    title: () => t('exchange.logs.col_error'),
     key: 'error_message',
     width: 200,
     ellipsis: { tooltip: true },
@@ -191,17 +193,17 @@ const columns = [
 </script>
 
 <template>
-  <CommonPage show-footer title="邮件日志">
+  <CommonPage show-footer :title="$t('exchange.logs.title')">
     <!-- 统计卡片 -->
     <NGrid :cols="4" :x-gap="16" style="margin-bottom: 16px">
       <NGi>
         <NCard>
-          <NStatistic label="总请求数" :value="stats.total_count || 0" />
+          <NStatistic :label="$t('exchange.logs.stat_total')" :value="stats.total_count || 0" />
         </NCard>
       </NGi>
       <NGi>
         <NCard>
-          <NStatistic label="成功数" :value="stats.success_count || 0">
+          <NStatistic :label="$t('exchange.logs.stat_success')" :value="stats.success_count || 0">
             <template #suffix>
               <span style="color: #18a058">✓</span>
             </template>
@@ -210,7 +212,7 @@ const columns = [
       </NGi>
       <NGi>
         <NCard>
-          <NStatistic label="失败数" :value="stats.failed_count || 0">
+          <NStatistic :label="$t('exchange.logs.stat_failed')" :value="stats.failed_count || 0">
             <template #suffix>
               <span style="color: #d03050">✗</span>
             </template>
@@ -219,7 +221,7 @@ const columns = [
       </NGi>
       <NGi>
         <NCard>
-          <NStatistic label="成功率" :value="stats.success_rate || 0">
+          <NStatistic :label="$t('exchange.logs.stat_success_rate')" :value="stats.success_rate || 0">
             <template #prefix>
               <TheIcon icon="mdi:chart-arc" :size="24" style="color: #18a058" />
             </template>
@@ -240,7 +242,7 @@ const columns = [
       :show-query-bar-actions="false"
     >
       <template #queryBar>
-        <QueryBarItem label="操作类型" :label-width="60">
+        <QueryBarItem :label="$t('exchange.logs.query_action')" :label-width="60">
           <NSelect
             v-model:value="queryItems.action"
             :options="actionOptions"
@@ -249,7 +251,7 @@ const columns = [
             @update:value="$table?.handleSearch()"
           />
         </QueryBarItem>
-        <QueryBarItem label="状态" :label-width="40">
+        <QueryBarItem :label="$t('exchange.logs.query_status')" :label-width="40">
           <NSelect
             v-model:value="queryItems.status"
             :options="statusOptions"

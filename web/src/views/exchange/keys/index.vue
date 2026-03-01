@@ -1,5 +1,6 @@
 <script setup>
 import { h, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   NButton,
   NForm,
@@ -24,7 +25,9 @@ import { useCRUD } from '@/composables'
 import api from '@/api'
 import TheIcon from '@/components/icon/TheIcon.vue'
 
-defineOptions({ name: 'API密钥管理' })
+defineOptions({ name: 'ApiKeyManagement' })
+
+const { t } = useI18n()
 
 const $table = ref(null)
 const queryItems = ref({})
@@ -60,7 +63,7 @@ const {
   modalFormRef,
   handleAdd,
 } = useCRUD({
-  name: 'API密钥',
+  name: t('exchange.keys.name'),
   initForm: {
     permissions: ['send', 'drafts', 'receive', 'search', 'delete', 'folders', 'sync', 'read', 'reply', 'forward', 'contacts'],
     rate_limit: 100,
@@ -88,7 +91,7 @@ async function handleSaveKey() {
     try {
       const res = await api.createExchangeApiKey(modalForm.value)
       if (res.code === 200) {
-        $message.success('创建成功')
+        $message.success(t('exchange.keys.create_success'))
         if (res.data?.api_key) {
           newApiKey.value = res.data.api_key
           showKeyModal.value = true
@@ -96,10 +99,10 @@ async function handleSaveKey() {
         modalVisible.value = false
         $table.value?.handleSearch()
       } else {
-        $message.error(res.msg || '创建失败')
+        $message.error(res.msg || t('exchange.keys.create_fail'))
       }
     } catch (err) {
-      $message.error('创建失败: ' + err.message)
+      $message.error(t('exchange.keys.create_fail') + ': ' + err.message)
     }
   })
 }
@@ -109,13 +112,13 @@ async function handleRevoke(row) {
   try {
     const res = await api.revokeExchangeApiKey({ key_id: row.id })
     if (res.code === 200) {
-      $message.success('撤销成功')
+      $message.success(t('exchange.keys.revoke_success'))
       $table.value?.handleSearch()
     } else {
-      $message.error(res.msg || '撤销失败')
+      $message.error(res.msg || t('exchange.keys.revoke_fail'))
     }
   } catch (err) {
-    $message.error('撤销失败: ' + err.message)
+    $message.error(t('exchange.keys.revoke_fail') + ': ' + err.message)
   }
 }
 
@@ -124,13 +127,13 @@ async function handleDelete(row) {
   try {
     const res = await api.deleteExchangeApiKey({ key_id: row.id })
     if (res.code === 200) {
-      $message.success('删除成功')
+      $message.success(t('exchange.keys.delete_success'))
       $table.value?.handleSearch()
     } else {
-      $message.error(res.msg || '删除失败')
+      $message.error(res.msg || t('exchange.keys.delete_fail'))
     }
   } catch (err) {
-    $message.error('删除失败: ' + err.message)
+    $message.error(t('exchange.keys.delete_fail') + ': ' + err.message)
   }
 }
 
@@ -138,23 +141,20 @@ async function handleDelete(row) {
 async function copyKey() {
   const text = newApiKey.value
   if (!text) {
-    $message.error('没有可复制的密钥')
+    $message.error(t('exchange.keys.copy_nothing'))
     return
   }
   
-  // 在安全上下文中使用 Clipboard API
   if (navigator.clipboard && window.isSecureContext) {
     try {
       await navigator.clipboard.writeText(text)
-      $message.success('已复制到剪贴板')
+      $message.success(t('exchange.keys.copy_success'))
       return
     } catch (err) {
       console.error('[copyKey] Clipboard API 失败:', err)
-      // 继续尝试降级方案
     }
   }
   
-  // 降级方案：使用 execCommand
   const textArea = document.createElement('textarea')
   textArea.value = text
   textArea.style.cssText = `
@@ -184,9 +184,9 @@ async function copyKey() {
   document.body.removeChild(textArea)
   
   if (success) {
-    $message.success('已复制到剪贴板')
+    $message.success(t('exchange.keys.copy_success'))
   } else {
-    $message.warning('自动复制失败，请手动选择上方密钥并按 Ctrl+C 复制')
+    $message.warning(t('exchange.keys.copy_fail'))
   }
 }
 
@@ -196,28 +196,28 @@ onMounted(() => {
 })
 
 const permissionOptions = [
-  { label: '发送邮件', value: 'send' },
-  { label: '创建草稿', value: 'drafts' },
-  { label: '接收邮件', value: 'receive' },
-  { label: '搜索邮件', value: 'search' },
-  { label: '删除邮件', value: 'delete' },
-  { label: '文件夹操作', value: 'folders' },
-  { label: '邮件同步', value: 'sync' },
-  { label: '标记已读', value: 'read' },
-  { label: '回复邮件', value: 'reply' },
-  { label: '转发邮件', value: 'forward' },
-  { label: '通讯录', value: 'contacts' },
+  { label: () => t('exchange.keys.perm_send'), value: 'send' },
+  { label: () => t('exchange.keys.perm_drafts'), value: 'drafts' },
+  { label: () => t('exchange.keys.perm_receive'), value: 'receive' },
+  { label: () => t('exchange.keys.perm_search'), value: 'search' },
+  { label: () => t('exchange.keys.perm_delete'), value: 'delete' },
+  { label: () => t('exchange.keys.perm_folders'), value: 'folders' },
+  { label: () => t('exchange.keys.perm_sync'), value: 'sync' },
+  { label: () => t('exchange.keys.perm_read'), value: 'read' },
+  { label: () => t('exchange.keys.perm_reply'), value: 'reply' },
+  { label: () => t('exchange.keys.perm_forward'), value: 'forward' },
+  { label: () => t('exchange.keys.perm_contacts'), value: 'contacts' },
 ]
 
 const columns = [
   {
-    title: '名称',
+    title: () => t('exchange.keys.col_name'),
     key: 'name',
     width: 150,
     ellipsis: { tooltip: true },
   },
   {
-    title: '密钥前缀',
+    title: () => t('exchange.keys.col_prefix'),
     key: 'key_prefix',
     width: 100,
     align: 'center',
@@ -226,7 +226,7 @@ const columns = [
     },
   },
   {
-    title: '权限',
+    title: () => t('exchange.keys.col_permissions'),
     key: 'permissions',
     width: 200,
     render(row) {
@@ -244,39 +244,39 @@ const columns = [
     },
   },
   {
-    title: '状态',
+    title: () => t('exchange.keys.col_status'),
     key: 'is_active',
     width: 80,
     align: 'center',
     render(row) {
       const expired = row.expires_at && new Date(row.expires_at) < new Date()
       if (expired) {
-        return h(NTag, { type: 'error' }, { default: () => '已过期' })
+        return h(NTag, { type: 'error' }, { default: () => t('exchange.keys.status_expired') })
       }
       return h(
         NTag,
         { type: row.is_active ? 'success' : 'warning' },
-        { default: () => (row.is_active ? '有效' : '已撤销') }
+        { default: () => (row.is_active ? t('exchange.keys.status_active') : t('exchange.keys.status_revoked')) }
       )
     },
   },
   {
-    title: '速率限制',
+    title: () => t('exchange.keys.col_rate_limit'),
     key: 'rate_limit',
     width: 100,
     align: 'center',
     render(row) {
-      return `${row.rate_limit}/分钟`
+      return `${row.rate_limit}${t('exchange.keys.rate_per_minute')}`
     },
   },
   {
-    title: '使用次数',
+    title: () => t('exchange.keys.col_usage'),
     key: 'usage_count',
     width: 100,
     align: 'center',
   },
   {
-    title: '最后使用',
+    title: () => t('exchange.keys.col_last_used'),
     key: 'last_used_at',
     width: 160,
     align: 'center',
@@ -285,16 +285,16 @@ const columns = [
     },
   },
   {
-    title: '过期时间',
+    title: () => t('exchange.keys.col_expires'),
     key: 'expires_at',
     width: 160,
     align: 'center',
     render(row) {
-      return row.expires_at ? formatDate(row.expires_at) : '永不过期'
+      return row.expires_at ? formatDate(row.expires_at) : t('exchange.keys.never_expires')
     },
   },
   {
-    title: '操作',
+    title: () => t('exchange.keys.col_actions'),
     key: 'actions',
     width: 160,
     align: 'center',
@@ -313,11 +313,11 @@ const columns = [
                   NButton,
                   { size: 'small', type: 'warning', style: 'margin-right: 8px;' },
                   {
-                    default: () => '撤销',
+                    default: () => t('exchange.keys.btn_revoke'),
                     icon: renderIcon('mdi:cancel', { size: 16 }),
                   }
                 ),
-              default: () => '确定撤销该密钥吗？撤销后将无法使用',
+              default: () => t('exchange.keys.confirm_revoke'),
             }
           ),
         h(
@@ -331,11 +331,11 @@ const columns = [
                 NButton,
                 { size: 'small', type: 'error' },
                 {
-                  default: () => '删除',
+                  default: () => t('exchange.keys.btn_delete'),
                   icon: renderIcon('material-symbols:delete-outline', { size: 16 }),
                 }
               ),
-            default: () => '确定永久删除该密钥吗？',
+            default: () => t('exchange.keys.confirm_delete'),
           }
         ),
       ]
@@ -344,18 +344,18 @@ const columns = [
 ]
 
 const validateForm = {
-  name: [{ required: true, message: '请输入密钥名称', trigger: ['input', 'blur'] }],
+  name: [{ required: true, message: () => t('exchange.keys.validate_name_required'), trigger: ['input', 'blur'] }],
   permissions: [
-    { type: 'array', required: true, message: '请至少选择一个权限', trigger: ['change'] },
+    { type: 'array', required: true, message: () => t('exchange.keys.validate_permissions_required'), trigger: ['change'] },
   ],
 }
 </script>
 
 <template>
-  <CommonPage show-footer title="API密钥管理">
+  <CommonPage show-footer :title="$t('exchange.keys.title')">
     <template #action>
       <NButton type="primary" @click="handleAdd">
-        <TheIcon icon="material-symbols:add" :size="18" class="mr-5" />创建密钥
+        <TheIcon icon="material-symbols:add" :size="18" class="mr-5" />{{ $t('exchange.keys.add') }}
       </NButton>
     </template>
 
@@ -382,54 +382,54 @@ const validateForm = {
         :model="modalForm"
         :rules="validateForm"
       >
-        <NFormItem label="密钥名称" path="name">
-          <NInput v-model:value="modalForm.name" clearable placeholder="用于识别密钥用途" />
+        <NFormItem :label="$t('exchange.keys.form_name')" path="name">
+          <NInput v-model:value="modalForm.name" clearable :placeholder="$t('exchange.keys.placeholder_name')" />
         </NFormItem>
-        <NFormItem label="权限" path="permissions">
+        <NFormItem :label="$t('exchange.keys.form_permissions')" path="permissions">
           <NSelect
             v-model:value="modalForm.permissions"
             multiple
             :options="permissionOptions"
-            placeholder="选择允许的操作"
+            :placeholder="$t('exchange.keys.placeholder_permissions')"
           />
         </NFormItem>
-        <NFormItem label="速率限制" path="rate_limit">
+        <NFormItem :label="$t('exchange.keys.form_rate_limit')" path="rate_limit">
           <NInputNumber
             v-model:value="modalForm.rate_limit"
             :min="1"
             :max="10000"
-            placeholder="每分钟请求数"
+            :placeholder="$t('exchange.keys.placeholder_rate_limit')"
           />
-          <span style="margin-left: 8px; color: #999">次/分钟</span>
+          <span style="margin-left: 8px; color: #999">{{ $t('exchange.keys.unit_per_minute') }}</span>
         </NFormItem>
-        <NFormItem label="过期天数" path="expires_days">
+        <NFormItem :label="$t('exchange.keys.form_expires_days')" path="expires_days">
           <NInputNumber
             v-model:value="modalForm.expires_days"
             :min="1"
             :max="3650"
-            placeholder="有效天数"
+            :placeholder="$t('exchange.keys.placeholder_expires_days')"
           />
-          <span style="margin-left: 8px; color: #999">天</span>
+          <span style="margin-left: 8px; color: #999">{{ $t('exchange.keys.unit_days') }}</span>
         </NFormItem>
-        <NFormItem label="允许账户" path="allowed_accounts">
+        <NFormItem :label="$t('exchange.keys.form_allowed_accounts')" path="allowed_accounts">
           <NSelect
             v-model:value="modalForm.allowed_accounts"
             multiple
             :options="accountOptions"
-            placeholder="留空表示允许所有账户"
+            :placeholder="$t('exchange.keys.placeholder_allowed_accounts')"
             clearable
           />
         </NFormItem>
-        <NFormItem label="IP白名单" path="ip_whitelist">
+        <NFormItem :label="$t('exchange.keys.form_ip_whitelist')" path="ip_whitelist">
           <NInput
             v-model:value="modalForm.ip_whitelist_str"
             type="textarea"
-            placeholder="每行一个IP，留空不限制"
+            :placeholder="$t('exchange.keys.placeholder_ip_whitelist')"
             :autosize="{ minRows: 2, maxRows: 5 }"
           />
         </NFormItem>
-        <NFormItem label="备注" path="remark">
-          <NInput v-model:value="modalForm.remark" type="textarea" clearable placeholder="可选" />
+        <NFormItem :label="$t('exchange.keys.form_remark')" path="remark">
+          <NInput v-model:value="modalForm.remark" type="textarea" clearable :placeholder="$t('exchange.keys.placeholder_remark')" />
         </NFormItem>
       </NForm>
     </CrudModal>
@@ -437,18 +437,18 @@ const validateForm = {
     <!-- 密钥显示弹窗 -->
     <CrudModal
       v-model:visible="showKeyModal"
-      title="密钥创建成功"
+      :title="$t('exchange.keys.key_created_title')"
       :show-footer="false"
       style="width: 600px; max-width: 90vw"
     >
-      <NAlert type="warning" title="请妥善保存" style="margin-bottom: 16px">
-        密钥仅显示一次，关闭后将无法再次查看。请立即复制保存！
+      <NAlert type="warning" :title="$t('exchange.keys.key_created_warning')" style="margin-bottom: 16px">
+        {{ $t('exchange.keys.key_created_message') }}
       </NAlert>
       <div style="background: #f5f5f5; padding: 16px; border-radius: 4px; margin-bottom: 16px; overflow: hidden">
         <code style="display: block; word-break: break-all; overflow-wrap: break-word; white-space: pre-wrap; font-family: monospace; font-size: 13px; color: #333; line-height: 1.5">{{ newApiKey }}</code>
       </div>
       <NButton type="primary" block @click="copyKey">
-        <TheIcon icon="mdi:content-copy" :size="18" class="mr-5" />复制密钥
+        <TheIcon icon="mdi:content-copy" :size="18" class="mr-5" />{{ $t('exchange.keys.btn_copy_key') }}
       </NButton>
     </CrudModal>
   </CommonPage>

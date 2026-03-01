@@ -9,25 +9,18 @@
 <script setup>
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/store'
-import { router } from '~/src/router'
 
 const store = useAppStore()
 const { availableLocales, t } = useI18n()
 
 const options = computed(() => {
-  let select = []
-  availableLocales.forEach((locale) => {
-    select.push({
-      label: t('lang', 1, { locale: locale }),
-      key: locale,
-    })
-  })
-  return select
+  return availableLocales.map((locale) => ({
+    label: t('lang', 1, { locale }),
+    key: locale,
+  }))
 })
 
 const handleChangeLocale = (value) => {
   store.setLocale(value)
-  // reload page
-  router.go()
 }
 </script>
