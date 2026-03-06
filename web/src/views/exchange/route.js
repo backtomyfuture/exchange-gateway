@@ -6,7 +6,7 @@ export default {
     component: Layout,
     redirect: '/exchange/accounts',
     meta: {
-        title: 'Exchange邮件',
+        titleKey: 'exchange.route.title',
         icon: 'token:brand-exchange',
         order: 10,
     },
@@ -16,7 +16,7 @@ export default {
             path: 'accounts',
             component: () => import('@/views/exchange/accounts/index.vue'),
             meta: {
-                title: '账户管理',
+                titleKey: 'exchange.route.accounts',
                 icon: 'material-symbols:contact-mail-outline',
             },
         },
@@ -25,7 +25,7 @@ export default {
             path: 'keys',
             component: () => import('@/views/exchange/keys/index.vue'),
             meta: {
-                title: 'API密钥',
+                titleKey: 'exchange.route.keys',
                 icon: 'material-symbols:key-outline',
             },
         },
@@ -34,7 +34,7 @@ export default {
             path: 'webhooks',
             component: () => import('@/views/exchange/webhooks/index.vue'),
             meta: {
-                title: 'Webhook订阅',
+                titleKey: 'exchange.route.webhooks',
                 icon: 'connection',
             },
         },
@@ -43,7 +43,7 @@ export default {
             path: 'templates',
             component: () => import('@/views/exchange/templates/index.vue'),
             meta: {
-                title: '邮件模板',
+                titleKey: 'exchange.route.templates',
                 icon: 'material-symbols:article-outline',
             },
         },
@@ -52,7 +52,7 @@ export default {
             path: 'logs',
             component: () => import('@/views/exchange/logs/index.vue'),
             meta: {
-                title: '操作日志',
+                titleKey: 'exchange.route.logs',
                 icon: 'material-symbols:history',
             },
         },
@@ -61,7 +61,7 @@ export default {
             path: 'stats',
             component: () => import('@/views/exchange/stats/index.vue'),
             meta: {
-                title: '使用统计',
+                titleKey: 'exchange.route.stats',
                 icon: 'material-symbols:analytics-outline',
             },
         },

@@ -11,7 +11,7 @@
 
       <div w-320 flex-col px-20 py-35>
         <h5 f-c-c text-24 font-normal color="#6a6a6a">
-          <img src="@/assets/images/logo-icon.png" style="height: 40px; margin-right: 10px;" />{{ $t('app_name') }}
+          <img src="@/assets/svg/logo.svg" style="height: 40px; margin-right: 10px;" />{{ $t('app_name') }}
         </h5>
         <div mt-30>
           <n-input

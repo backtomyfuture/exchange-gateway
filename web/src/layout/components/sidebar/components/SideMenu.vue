@@ -15,15 +15,19 @@
 <script setup>
 import { usePermissionStore, useAppStore } from '@/store'
 import { renderCustomIcon, renderIcon, isExternal } from '@/utils'
+import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
 const curRoute = useRoute()
 const permissionStore = usePermissionStore()
 const appStore = useAppStore()
+const { t } = useI18n()
 
 const activeKey = computed(() => curRoute.meta?.activeMenu || curRoute.name)
 
 const menuOptions = computed(() => {
+  // re-evaluate when appStore.locale changes
+  void appStore.locale
   return permissionStore.menus.map((item) => getMenuItem(item)).sort((a, b) => a.order - b.order)
 })
 
@@ -32,6 +36,11 @@ watch(curRoute, async () => {
   await nextTick()
   menu.value?.showOption()
 })
+
+function resolveTitle(meta, name) {
+  if (meta?.titleKey) return t(meta.titleKey)
+  return meta?.title || name
+}
 
 function resolvePath(basePath, path) {
   if (isExternal(path)) return path
@@ -46,7 +55,7 @@ function resolvePath(basePath, path) {
 
 function getMenuItem(route, basePath = '') {
   let menuItem = {
-    label: (route.meta && route.meta.title) || route.name,
+    label: resolveTitle(route.meta, route.name),
     key: route.name,
     path: resolvePath(basePath, route.path),
     icon: getIcon(route.meta),
@@ -60,11 +69,10 @@ function getMenuItem(route, basePath = '') {
   if (!visibleChildren.length) return menuItem
 
   if (visibleChildren.length === 1 && !route.alwaysShow && !route.meta?.alwaysShow) {
-    // 单个子路由处理
     const singleRoute = visibleChildren[0]
     menuItem = {
       ...menuItem,
-      label: singleRoute.meta?.title || singleRoute.name,
+      label: resolveTitle(singleRoute.meta, singleRoute.name),
       key: singleRoute.name,
       path: resolvePath(menuItem.path, singleRoute.path),
       icon: getIcon(singleRoute.meta),

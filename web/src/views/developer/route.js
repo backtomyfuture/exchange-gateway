@@ -6,7 +6,7 @@ export default {
     component: Layout,
     redirect: '/developer/index',
     meta: {
-        title: '开发者服务',
+        titleKey: 'developer.route_title',
         icon: 'material-symbols:code',
         order: 90,
     },
@@ -16,7 +16,7 @@ export default {
             path: 'index',
             component: () => import('@/views/developer/index.vue'),
             meta: {
-                title: '开发者指南',
+                titleKey: 'developer.route_guide',
                 icon: 'material-symbols:help-outline',
             },
         },

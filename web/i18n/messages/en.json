@@ -326,6 +326,15 @@
       "stats": "Usage Statistics"
     }
   },
+  "system_route": {
+    "title": "System Management",
+    "user": "User Management",
+    "role": "Role Management",
+    "menu": "Menu Management",
+    "api": "API Management",
+    "dept": "Department Management",
+    "auditlog": "Audit Log"
+  },
   "system": {
     "user": {
       "title": "User List",
