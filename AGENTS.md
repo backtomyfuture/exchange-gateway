@@ -15,13 +15,47 @@ Default login: `admin` / `123456` — Dashboard at http://localhost, API docs at
 
 ### Docker in Cloud Agent VM
 
+The VM runs inside a Firecracker container with cgroupv2 in threaded mode, which breaks `runc`. Use `crun` 1.20+ with `--cgroup-manager=disabled` as the default OCI runtime:
+
 ```bash
+sudo apt-get update && sudo apt-get install -y fuse-overlayfs iptables crun
+sudo curl -L https://github.com/containers/crun/releases/download/1.20/crun-1.20-linux-amd64 -o /usr/local/bin/crun && sudo chmod +x /usr/local/bin/crun
 sudo mkdir -p /etc/docker
-echo '{"storage-driver":"fuse-overlayfs"}' | sudo tee /etc/docker/daemon.json
+echo '{"storage-driver":"fuse-overlayfs","default-runtime":"crun","runtimes":{"crun":{"path":"/usr/local/bin/crun","runtimeArgs":["--cgroup-manager=disabled"]}},"default-cgroupns-mode":"host"}' | sudo tee /etc/docker/daemon.json
 sudo update-alternatives --set iptables /usr/sbin/iptables-legacy
 sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
 sudo dockerd &>/tmp/dockerd.log &
-sudo chmod 666 /var/run/docker.sock
+sleep 5 && sudo chmod 666 /var/run/docker.sock
+```
+
+A `docker-compose.override.yml` is needed to remove resource limits (they require the `io` cgroup controller which is unavailable):
+
+```bash
+cat > docker-compose.override.yml << 'EOF'
+services:
+  app:
+    deploy:
+      resources:
+        limits:
+          cpus: "0"
+          memory: "0"
+        reservations:
+          memory: "0"
+  webhook-worker:
+    deploy:
+      resources:
+        limits:
+          cpus: "0"
+          memory: "0"
+        reservations: {}
+  arq-worker:
+    deploy:
+      resources:
+        limits:
+          cpus: "0"
+          memory: "0"
+        reservations: {}
+EOF
 ```
 
 ### Lint / Test / Build
