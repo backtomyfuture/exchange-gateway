@@ -326,6 +326,15 @@
       "stats": "使用统计"
     }
   },
+  "system_route": {
+    "title": "系统管理",
+    "user": "用户管理",
+    "role": "角色管理",
+    "menu": "菜单管理",
+    "api": "API管理",
+    "dept": "部门管理",
+    "auditlog": "审计日志"
+  },
   "system": {
     "user": {
       "title": "用户列表",

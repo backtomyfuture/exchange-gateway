@@ -1,13 +1,27 @@
 import { defineStore } from 'pinia'
-import { basicRoutes, vueModules } from '@/router/routes'
+import { basicRoutes, asyncRoutes, vueModules } from '@/router/routes'
 const Layout = () => import('@/layout/index.vue')
 import api from '@/api'
 
-// * 后端路由相关函数
-// 根据后端传来数据构建出前端路由
+function buildTitleKeyMap(routes, basePath = '') {
+  const map = {}
+  for (const route of routes) {
+    const fullPath = basePath ? `${basePath}/${route.path}`.replace(/\/+/g, '/') : route.path
+    if (route.meta?.titleKey) {
+      map[fullPath] = route.meta.titleKey
+    }
+    if (route.children) {
+      Object.assign(map, buildTitleKeyMap(route.children, fullPath))
+    }
+  }
+  return map
+}
+
+const titleKeyMap = buildTitleKeyMap(asyncRoutes)
 
 function buildRoutes(routes = []) {
   return routes.map((e) => {
+    const routeTitleKey = titleKeyMap[e.path] || null
     const route = {
       name: e.name,
       path: e.path,
@@ -17,6 +31,7 @@ function buildRoutes(routes = []) {
       redirect: e.redirect,
       meta: {
         title: e.name,
+        titleKey: routeTitleKey,
         icon: e.icon,
         order: e.order,
         keepAlive: e.keepalive,
@@ -25,21 +40,24 @@ function buildRoutes(routes = []) {
     }
 
     if (e.children && e.children.length > 0) {
-      // 有子菜单
-      route.children = e.children.map((e_child) => ({
-        name: e_child.name,
-        path: e_child.path,
-        component: vueModules[`/src/views${e_child.component}/index.vue`],
-        isHidden: e_child.is_hidden,
-        meta: {
-          title: e_child.name,
-          icon: e_child.icon,
-          order: e_child.order,
-          keepAlive: e_child.keepalive,
-        },
-      }))
+      route.children = e.children.map((e_child) => {
+        const childPath = `${e.path}/${e_child.path}`.replace(/\/+/g, '/')
+        const childTitleKey = titleKeyMap[childPath] || null
+        return {
+          name: e_child.name,
+          path: e_child.path,
+          component: vueModules[`/src/views${e_child.component}/index.vue`],
+          isHidden: e_child.is_hidden,
+          meta: {
+            title: e_child.name,
+            titleKey: childTitleKey,
+            icon: e_child.icon,
+            order: e_child.order,
+            keepAlive: e_child.keepalive,
+          },
+        }
+      })
     } else {
-      // 没有子菜单，创建一个默认的子路由
       route.children.push({
         name: `${e.name}Default`,
         path: '',
@@ -47,6 +65,7 @@ function buildRoutes(routes = []) {
         isHidden: true,
         meta: {
           title: e.name,
+          titleKey: routeTitleKey,
           icon: e.icon,
           order: e.order,
           keepAlive: e.keepalive,

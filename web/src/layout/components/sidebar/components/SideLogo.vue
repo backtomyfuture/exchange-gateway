@@ -1,6 +1,6 @@
 <template>
   <router-link h-60 f-c-c to="/">
-    <img :src="logo" style="height: 36px; width: 36px; object-fit: cover; object-position: left;" />
+    <img :src="logo" style="height: 36px; width: 36px; object-fit: contain;" />
     <h2
       v-show="!appStore.collapsed"
       ml-2
@@ -11,15 +11,14 @@
       font-bold
       color-primary
     >
-      {{ title }}
+      {{ $t('app_name') }}
     </h2>
   </router-link>
 </template>
 
 <script setup>
 import { useAppStore } from '@/store'
-import logo from '@/assets/images/swallow_icon.png'
-const title = import.meta.env.VITE_TITLE
+import logo from '@/assets/svg/logo.svg'
 
 const appStore = useAppStore()
 </script>
