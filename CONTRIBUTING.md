@@ -3,6 +3,15 @@
 ## Setup
 
 ```bash
+make init             # generate secrets, copy .env, install deps
+docker compose up -d  # start all services
+```
+
+Or step by step:
+
+```bash
+./scripts/init-secrets.sh
+cp .env.example .env
 pip install -r requirements.txt
 cd web && pnpm install
 ```
@@ -12,22 +21,22 @@ cd web && pnpm install
 We use [Ruff](https://docs.astral.sh/ruff/) — CI will reject any violations.
 
 ```bash
-ruff check app/ tests/ scripts/   # lint
-ruff format app/ tests/ scripts/  # format
+make lint             # ruff check + eslint
+make format           # ruff format
 ```
 
 ## Testing
 
 ```bash
-pytest tests/ -v --ignore=tests/integration/ --ignore=tests/manual/
+make test             # runs pytest (189 tests, SQLite in-memory)
 ```
 
-Add tests for new functionality. The test DB is SQLite in-memory (see `tests/conftest.py`).
+Add tests for new functionality. See `tests/conftest.py` for the test DB setup.
 
 ## Pull Request Checklist
 
-- [ ] `ruff check` and `ruff format` pass
-- [ ] All tests pass
+- [ ] `make lint` passes
+- [ ] `make test` passes
 - [ ] New code has test coverage
 - [ ] Commit messages are clear and descriptive
 

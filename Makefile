@@ -12,15 +12,15 @@ install: ## Install all dependencies (backend + frontend)
 # ─── Development ─────────────────────────────────────────────────────
 
 dev: ## Start all services via Docker Compose
-	docker compose --profile local-db --profile local-redis up -d
+	docker compose up -d
 
 up: dev ## Alias for dev
 
 down: ## Stop all services
-	docker compose --profile local-db --profile local-redis down
+	docker compose down
 
 logs: ## Tail logs from all services
-	docker compose --profile local-db --profile local-redis logs -f --tail=50
+	docker compose logs -f --tail=50
 
 web-dev: ## Start frontend dev server (Vite, port 3000)
 	cd web && pnpm dev
@@ -40,7 +40,7 @@ test: ## Run backend tests
 # ─── Build ───────────────────────────────────────────────────────────
 
 build: ## Build Docker images
-	docker compose --profile local-db --profile local-redis build
+	docker compose build
 
 build-web: ## Build frontend only
 	cd web && pnpm build
@@ -53,5 +53,5 @@ init: ## First-time setup: generate secrets, copy env, install deps
 	$(MAKE) install
 
 clean: ## Remove Docker volumes and build artifacts
-	docker compose --profile local-db --profile local-redis down -v
+	docker compose down -v
 	rm -rf .docker-data web/dist web/node_modules

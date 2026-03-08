@@ -5,10 +5,8 @@
 ### Running the Application
 
 ```bash
-./scripts/init-secrets.sh   # Linux/macOS
-python scripts/init-secrets.py   # Windows
-cp .env.example .env   # edit Exchange server config (NO secrets needed in .env)
-docker compose --profile local-db --profile local-redis up -d
+make init                 # generate secrets, copy .env, install deps
+docker compose up -d      # start all services
 ```
 
 Default login: `admin` / `123456` — Dashboard at http://localhost, API docs at http://localhost:18001/docs
@@ -28,43 +26,28 @@ sudo dockerd &>/tmp/dockerd.log &
 sleep 5 && sudo chmod 666 /var/run/docker.sock
 ```
 
-A `docker-compose.override.yml` is needed to remove resource limits (they require the `io` cgroup controller which is unavailable):
+The `deploy.resources` limits in docker-compose.yml require the `io` cgroup controller which is unavailable in the VM. Create a temporary override to remove them:
 
 ```bash
 cat > docker-compose.override.yml << 'EOF'
 services:
   app:
-    deploy:
-      resources:
-        limits:
-          cpus: "0"
-          memory: "0"
-        reservations:
-          memory: "0"
+    deploy: { resources: { limits: { cpus: "0", memory: "0" }, reservations: { memory: "0" } } }
   webhook-worker:
-    deploy:
-      resources:
-        limits:
-          cpus: "0"
-          memory: "0"
-        reservations: {}
+    deploy: { resources: { limits: { cpus: "0", memory: "0" }, reservations: {} } }
   arq-worker:
-    deploy:
-      resources:
-        limits:
-          cpus: "0"
-          memory: "0"
-        reservations: {}
+    deploy: { resources: { limits: { cpus: "0", memory: "0" }, reservations: {} } }
 EOF
 ```
+
+**Do NOT commit `docker-compose.override.yml`** — it is only for the cloud VM environment.
 
 ### Lint / Test / Build
 
 ```bash
-ruff check app/ tests/ scripts/       # lint
-ruff format app/ tests/ scripts/      # format
-pytest tests/ -v --ignore=tests/integration/ --ignore=tests/manual/   # 189 tests
-docker compose --profile local-db --profile local-redis build         # build images
+make lint       # ruff check + eslint
+make test       # pytest (189 tests)
+make build      # build Docker images
 ```
 
 ### Frontend
@@ -77,8 +60,8 @@ cd web && pnpm dev                      # Vite dev server (port 3000)
 
 ### Gotchas
 
-- MySQL and Redis use Docker Compose profiles — pass `--profile local-db --profile local-redis`.
 - `.env` has NO secrets — passwords/keys are read from `secrets/` directory via Docker Secrets.
+- To use an external MySQL/Redis, comment out the service in docker-compose.yml and update `.env`.
 - `uvicorn --reload` locally needs `--reload-exclude ".docker-data/*"`.
 - `pnpm install` may warn about ignored build scripts (`es5-ext`, `esbuild`, `vue-demi`); safe to ignore.
-- Frontend `pnpm lint` reports ~600 pre-existing prettier/formatting errors; these do not block the build.
+- Frontend `pnpm lint` reports ~700 pre-existing prettier/formatting errors; these do not block the build.

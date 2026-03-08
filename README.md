@@ -6,14 +6,13 @@
 
 REST API gateway for Microsoft Exchange / EWS with an admin dashboard.
 
-## Features
-
 | Category | Details |
 |----------|---------|
 | **Email API** | Send, receive, search, reply, forward — all via `X-Api-Key` |
 | **Templates** | Jinja2 variable substitution, preview before send |
 | **Webhooks** | Real-time Exchange streaming events (NewMail, Created, …) |
 | **Dashboard** | Vue 3 + Naive UI — manage accounts, keys, templates, logs |
+| **i18n** | Chinese / English, switchable at runtime |
 | **Security** | AES-256-GCM encryption, SHA-256 key hashing, Docker Secrets |
 | **Observability** | Structured logging (structlog), Prometheus `/metrics`, audit trail |
 
@@ -23,21 +22,22 @@ REST API gateway for Microsoft Exchange / EWS with an admin dashboard.
 git clone https://github.com/f148002/exchange-gateway.git
 cd exchange-gateway
 
-# Generate secrets & configure
-./scripts/init-secrets.sh
-cp .env.example .env          # edit EXCHANGE_SERVER etc. (NO secrets in .env)
+# 1. Generate secrets & copy env
+make init                         # or: ./scripts/init-secrets.sh && cp .env.example .env
 
-# Launch (includes MySQL + Redis)
-docker compose --profile local-db --profile local-redis up -d
+# 2. (Optional) Edit .env — set EXCHANGE_SERVER, EXCHANGE_DOMAIN, etc.
+
+# 3. Start everything
+docker compose up -d              # or: make dev
 ```
 
 | Endpoint | URL |
 |----------|-----|
 | Dashboard | http://localhost |
-| API Docs (Swagger) | http://localhost/docs |
+| API Docs (Swagger) | http://localhost:18001/docs |
 | Health Check | http://localhost:18001/health |
 
-Default login: `admin` / `123456`
+Default login: **admin / 123456**
 
 ## Architecture
 
@@ -55,16 +55,28 @@ Default login: `admin` / `123456`
                  └──────────────┘
 ```
 
-**Services** (all via Docker Compose):
-
 | Service | Role |
 |---------|------|
-| `app` | FastAPI backend — API + auth + migrations |
+| `app` | FastAPI backend — API, auth, migrations |
 | `nginx` | Reverse proxy + serves Vue 3 SPA |
 | `arq-worker` | Async task queue (email send, webhook delivery) |
 | `webhook-worker` | Exchange streaming event listener |
-| `mysql` | Primary database (profile: `local-db`) |
-| `redis` | Task queue + rate limiting (profile: `local-redis`) |
+| `mysql` | Primary database |
+| `redis` | Task queue + rate limiting |
+
+### Using an External Database or Redis
+
+The bundled MySQL and Redis run by default. To use your own:
+
+1. Comment out `mysql` (or `redis`) in `docker-compose.yml`.
+2. Update `.env`:
+   ```env
+   DB_HOST=your-mysql-host
+   DB_PORT=3306
+   # For Redis:
+   REDIS_URL=redis://your-redis-host:6379/0
+   ```
+3. Put the database password in `secrets/db_password`.
 
 ## API Usage
 
@@ -73,7 +85,7 @@ Default login: `admin` / `123456`
 curl -X POST http://localhost:18001/api/v1/exchange/emails/send \
   -H "X-Api-Key: YOUR_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"account_id":1,"to":["user@example.com"],"subject":"Hello","body":"<p>Hi</p>","body_type":"html"}'
+  -d '{"account_id":1,"to":["user@example.com"],"subject":"Hello","body":"Hi"}'
 
 # Subscribe to events
 curl -X POST http://localhost:18001/api/v1/exchange/webhooks/create \
@@ -82,30 +94,28 @@ curl -X POST http://localhost:18001/api/v1/exchange/webhooks/create \
   -d '{"url":"https://yourserver.com/hook","events":["NewMailEvent"],"secret":"s3cret"}'
 ```
 
-Full API reference available at `/docs` (Swagger UI).
+Full API reference at `/docs` (Swagger UI).
 
 ## Development
 
 ```bash
-pip install -r requirements.txt   # backend deps
-cd web && pnpm install             # frontend deps
-
-# Lint & format
-ruff check app/ tests/ scripts/
-ruff format app/ tests/ scripts/
-
-# Test (189 tests)
-pytest tests/ -v --ignore=tests/integration/ --ignore=tests/manual/
+make install          # install Python + frontend deps
+make lint             # ruff + eslint
+make test             # pytest (189 tests)
+make build            # build Docker images
+make web-dev          # Vite dev server on :3000
 ```
+
+Run `make help` to see all available commands.
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | Backend | Python 3.11, FastAPI, Tortoise ORM, exchangelib, ARQ |
-| Frontend | Vue 3, Vite, Naive UI, Pinia |
+| Frontend | Vue 3, Vite, Naive UI, Pinia, vue-i18n |
 | Database | MySQL 8.0, Redis 7 |
-| Infra | Docker, Nginx, Prometheus |
+| Infra | Docker Compose, Nginx, Prometheus |
 
 ## License
 
