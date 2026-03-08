@@ -92,6 +92,7 @@ secrets/
 # Docker
 .docker/
 .docker-data/
+docker-compose.override.yml
 
 # Aerich migrations (可选：如果希望版本控制迁移文件，删除此行)
 # migrations/

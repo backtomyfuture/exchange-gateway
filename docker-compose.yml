@@ -1,11 +1,16 @@
-# Exchange Gateway - Docker Compose Configuration
+# Exchange Gateway - Docker Compose
 #
 # Quick Start:
-#   ./scripts/init-secrets.sh       # Generate secrets (first time only)
-#   cp .env.example .env && edit    # Configure Exchange server, DB host, etc.
-#   docker compose --profile local-db --profile local-redis up -d
+#   ./scripts/init-secrets.sh          # first time only
+#   cp .env.example .env               # edit as needed
+#   docker compose up -d
 #
-# .env has ZERO secrets — all passwords/keys come from ./secrets/ directory.
+# External Database / Redis:
+#   To use an existing MySQL or Redis instance, comment out the
+#   corresponding service below and set DB_HOST / REDIS_URL in .env.
+#
+# Secrets:
+#   .env has ZERO secrets — all passwords/keys live in ./secrets/.
 
 x-default-logging: &default-logging
   driver: json-file
@@ -43,15 +48,13 @@ secrets:
     file: ./secrets/db_password
 
 services:
-  # ===========================================
-  # MySQL Database
-  # ===========================================
+  # ── MySQL ────────────────────────────────────────────────────────────
+  # Remove this service if using an external database.
+  # Set DB_HOST, DB_PORT, DB_USER in .env; put password in secrets/db_password.
   mysql:
     image: mysql:8.0
     container_name: exchange-gateway-mysql
     restart: unless-stopped
-    profiles:
-      - local-db
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -62,7 +65,7 @@ services:
     secrets:
       - db_password
     ports:
-      - "13306:3306"
+      - "${MYSQL_PORT:-13306}:3306"
     volumes:
       - ./.docker-data/mysql:/var/lib/mysql
     networks:
@@ -75,9 +78,23 @@ services:
       start_period: 10s
     logging: *default-logging
 
-  # ===========================================
-  # FastAPI Application
-  # ===========================================
+  # ── Redis ────────────────────────────────────────────────────────────
+  # Remove this service if using an external Redis.
+  # Set REDIS_URL in .env (e.g. redis://your-redis:6379/0).
+  redis:
+    image: redis:7-alpine
+    container_name: exchange-gateway-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+    logging: *default-logging
+
+  # ── FastAPI Application ──────────────────────────────────────────────
   app:
     build:
       context: .
@@ -91,7 +108,7 @@ services:
       WORKERS: ${WORKERS:-2}
     secrets: *app-secrets
     ports:
-      - "18001:${BACKEND_PORT:-8000}"
+      - "${API_PORT:-18001}:${BACKEND_PORT:-8000}"
     depends_on:
       mysql:
         condition: service_healthy
@@ -117,9 +134,7 @@ services:
           memory: 512M
     logging: *default-logging
 
-  # ===========================================
-  # Webhook Listener Worker
-  # ===========================================
+  # ── Webhook Listener Worker ──────────────────────────────────────────
   webhook-worker:
     build:
       context: .
@@ -157,9 +172,7 @@ services:
           memory: 1G
     logging: *default-logging
 
-  # ===========================================
-  # ARQ Task Queue Worker
-  # ===========================================
+  # ── ARQ Task Queue Worker ────────────────────────────────────────────
   arq-worker:
     build:
       context: .
@@ -197,27 +210,7 @@ services:
           memory: 1G
     logging: *default-logging
 
-  # ===========================================
-  # Redis (Task Queue + Rate Limiting)
-  # ===========================================
-  redis:
-    image: redis:7-alpine
-    container_name: exchange-gateway-redis
-    restart: unless-stopped
-    profiles:
-      - local-redis
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    networks:
-      - backend
-    logging: *default-logging
-
-  # ===========================================
-  # Nginx Reverse Proxy
-  # ===========================================
+  # ── Nginx (Reverse Proxy + Vue SPA) ─────────────────────────────────
   nginx:
     build:
       context: .
@@ -239,9 +232,6 @@ services:
       - frontend
     logging: *default-logging
 
-# ===========================================
-# Networks
-# ===========================================
 networks:
   frontend:
     driver: bridge
