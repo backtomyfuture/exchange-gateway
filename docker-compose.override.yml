@@ -1,7 +1,0 @@
-services:
-  app:
-    deploy: { resources: { limits: { cpus: "0", memory: "0" }, reservations: { memory: "0" } } }
-  webhook-worker:
-    deploy: { resources: { limits: { cpus: "0", memory: "0" }, reservations: {} } }
-  arq-worker:
-    deploy: { resources: { limits: { cpus: "0", memory: "0" }, reservations: {} } }
