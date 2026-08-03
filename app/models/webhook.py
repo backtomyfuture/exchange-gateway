@@ -15,7 +15,8 @@ class WebhookSubscription(BaseModel, TimestampMixin):
 
     # 订阅基本信息
     url = fields.CharField(max_length=500, description="回调地址", db_index=True)
-    secret = fields.CharField(max_length=100, description="签名密钥 (HMAC SHA256)")
+    # Fernet 密文通常远长于用户提供的原始密钥；数据库字段必须留出足够空间。
+    secret = fields.CharField(max_length=2048, description="签名密钥 (HMAC SHA256)")
 
     # 关联账户
     account_id = fields.BigIntField(description="关联的 Exchange 账户ID", db_index=True)

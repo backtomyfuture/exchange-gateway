@@ -42,21 +42,16 @@ _SENSITIVE_KEYS = frozenset(
 )
 
 
-def _mask_sensitive(data: dict) -> dict:
-    """递归脱敏字典中的敏感字段。"""
-    if not isinstance(data, dict):
-        return data
-    masked = {}
-    for k, v in data.items():
-        if k.lower() in _SENSITIVE_KEYS:
-            masked[k] = "***"
-        elif isinstance(v, dict):
-            masked[k] = _mask_sensitive(v)
-        elif isinstance(v, list):
-            masked[k] = [_mask_sensitive(i) if isinstance(i, dict) else i for i in v]
-        else:
-            masked[k] = v
-    return masked
+def _mask_sensitive(data: Any) -> Any:
+    """递归脱敏日志数据中的敏感字段，支持字典和顶层列表。"""
+    if isinstance(data, dict):
+        return {
+            key: "***" if key.lower() in _SENSITIVE_KEYS else _mask_sensitive(value)
+            for key, value in data.items()
+        }
+    if isinstance(data, list):
+        return [_mask_sensitive(item) for item in data]
+    return data
 
 
 class SimpleBaseMiddleware:

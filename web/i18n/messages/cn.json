@@ -205,6 +205,7 @@
       "validate_events_required": "请至少选择一个事件",
       "validate_secret_required": "请输入签名密钥",
       "validate_secret_min": "密钥至少8个字符",
+      "validate_secret_max": "密钥最多256个字符",
       "tip_title": "Webhook 说明",
       "tip_header": "回调地址要求",
       "tip_1": "回调地址必须是公网可访问的 HTTPS 地址",

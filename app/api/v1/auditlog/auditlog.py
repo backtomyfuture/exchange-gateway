@@ -42,7 +42,9 @@ async def get_audit_log_list(
     elif end_time:
         q &= Q(created_at__lte=end_time)
 
-    audit_log_objs = await AuditLog.filter(q).offset((page - 1) * page_size).limit(page_size).order_by("-created_at")
-    total = await AuditLog.filter(q).count()
+    # 先排序再分页，配合 created_at 索引避免大表在分页后进行全量内存排序。
+    queryset = AuditLog.filter(q)
+    total = await queryset.count()
+    audit_log_objs = await queryset.order_by("-created_at").offset((page - 1) * page_size).limit(page_size)
     data = [await audit_log.to_dict() for audit_log in audit_log_objs]
     return SuccessExtra(data=data, total=total, page=page, page_size=page_size)

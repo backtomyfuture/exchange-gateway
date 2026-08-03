@@ -98,7 +98,8 @@ async def reply_email(
     """
     Reply to an existing email.
 
-    Requires the `reply` permission.
+    Requires the `reply` permission. Set `save_as_draft=true` to save instead
+    of sending immediately.
     """
     verify_account_access(api_key, data.account_id)
 
@@ -110,7 +111,8 @@ async def reply_email(
     )
 
     if result["success"]:
-        return Success(msg=result["message"])
+        data = {key: value for key, value in result.items() if key not in {"success", "message"}}
+        return Success(msg=result["message"], data=data or None)
     return Fail(code=500, msg=result["message"])
 
 
@@ -123,7 +125,8 @@ async def forward_email(
     """
     Forward an existing email to new recipients.
 
-    Requires the `forward` permission.
+    Requires the `forward` permission. Set `save_as_draft=true` to save instead
+    of sending immediately.
     """
     verify_account_access(api_key, data.account_id)
 
@@ -135,7 +138,8 @@ async def forward_email(
     )
 
     if result["success"]:
-        return Success(msg=result["message"])
+        data = {key: value for key, value in result.items() if key not in {"success", "message"}}
+        return Success(msg=result["message"], data=data or None)
     return Fail(code=500, msg=result["message"])
 
 

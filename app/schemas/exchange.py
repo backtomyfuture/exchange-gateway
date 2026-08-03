@@ -72,14 +72,16 @@ class EmailReplyRequest(BaseModel):
 
     account_id: int = Field(..., description="账户ID")
     reference_item_id: str = Field(..., description="原邮件ID")
+    folder: str = Field("INBOX", description="原邮件所在文件夹")
     to: list[str] | None = Field(None, description="收件人邮箱列表（不填则默认回复给发送者/所有人）")
     subject: str | None = Field(None, description="邮件主题（不填则自动添加 Re:）")
-    body: str = Field(..., description="回复内容")
+    body: str = Field(..., description="回复内容（仅用户新增内容，Exchange 自动拼接原文）")
     body_type: str = Field("html", description="正文类型: text/html")
     cc: list[str] | None = Field(None, description="抄送列表")
     bcc: list[str] | None = Field(None, description="密送列表")
     attachments: list[EmailAttachment] | None = Field(None, description="附件列表")
     reply_all: bool = Field(False, description="是否回复所有人")
+    save_as_draft: bool = Field(False, description="是否仅保存为草稿（不发送）")
 
 
 class EmailForwardRequest(BaseModel):
@@ -87,13 +89,15 @@ class EmailForwardRequest(BaseModel):
 
     account_id: int = Field(..., description="账户ID")
     reference_item_id: str = Field(..., description="原邮件ID")
+    folder: str = Field("INBOX", description="原邮件所在文件夹")
     to: list[str] = Field(..., description="收件人邮箱列表")
     subject: str | None = Field(None, description="邮件主题（不填则自动添加 Fwd:）")
-    body: str = Field("", description="转发附言")
+    body: str = Field("", description="转发附言（仅用户附言，Exchange 自动拼接原文）")
     body_type: str = Field("html", description="正文类型: text/html")
     cc: list[str] | None = Field(None, description="抄送列表")
     bcc: list[str] | None = Field(None, description="密送列表")
     attachments: list[EmailAttachment] | None = Field(None, description="附件列表")
+    save_as_draft: bool = Field(False, description="是否仅保存为草稿（不发送）")
 
 
 class EmailSendResponse(BaseModel):

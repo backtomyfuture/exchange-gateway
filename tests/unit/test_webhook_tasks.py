@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -47,11 +47,17 @@ async def test_deliver_marks_delivered_on_success(init_test_db):
         payload={"type": "NewMailEvent"},
         status="pending",
     )
-    with patch("app.tasks.webhook_tasks._http_post_webhook") as mock_post:
+    crypto = MagicMock()
+    crypto.decrypt.return_value = "original-signing-secret"
+    with (
+        patch("app.tasks.webhook_tasks._http_post_webhook") as mock_post,
+        patch("app.utils.crypto.get_crypto", return_value=crypto),
+    ):
         mock_post.return_value = None
         result = await deliver_webhook_task({"job_try": 1}, delivery.id)
 
     assert result["success"] is True
+    mock_post.assert_awaited_once_with("https://example.com/hook", delivery.payload, "original-signing-secret")
     await delivery.refresh_from_db()
     assert delivery.status == "delivered"
 
@@ -78,7 +84,12 @@ async def test_deliver_marks_dead_after_max_retries(init_test_db):
         payload={"type": "NewMailEvent"},
         status="pending",
     )
-    with patch("app.tasks.webhook_tasks._http_post_webhook") as mock_post:
+    crypto = MagicMock()
+    crypto.decrypt.return_value = "original-signing-secret"
+    with (
+        patch("app.tasks.webhook_tasks._http_post_webhook") as mock_post,
+        patch("app.utils.crypto.get_crypto", return_value=crypto),
+    ):
         mock_post.side_effect = httpx.ConnectError("refused")
         await deliver_webhook_task({"job_try": 5}, delivery.id)
 

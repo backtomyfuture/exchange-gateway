@@ -14,6 +14,9 @@ _WEBHOOK_EVENT_ALIASES = {
     "freebusychangedevent": "FreeBusyChangedEvent",
 }
 
+WEBHOOK_SECRET_MIN_LENGTH = 8
+WEBHOOK_SECRET_MAX_LENGTH = 256
+
 
 def _normalize_events(events: list[str]) -> list[str]:
     if not events:
@@ -94,14 +97,24 @@ class WebhookBase(BaseModel):
 
 class WebhookCreate(WebhookBase):
     account_id: int = Field(..., description="关联的 Exchange 账户ID")
-    secret: str = Field(..., min_length=8, description="签名密钥")
+    secret: str = Field(
+        ...,
+        min_length=WEBHOOK_SECRET_MIN_LENGTH,
+        max_length=WEBHOOK_SECRET_MAX_LENGTH,
+        description="签名密钥",
+    )
 
 
 class WebhookUpdate(BaseModel):
     url: HttpUrl | None = Field(None, description="回调地址")
     events: list[str] | None = Field(None, description="订阅事件列表")
     folders: list[str] | None = Field(None, description="监听文件夹列表")
-    secret: str | None = Field(None, min_length=8, description="签名密钥")
+    secret: str | None = Field(
+        None,
+        min_length=WEBHOOK_SECRET_MIN_LENGTH,
+        max_length=WEBHOOK_SECRET_MAX_LENGTH,
+        description="签名密钥",
+    )
     is_active: bool | None = Field(None, description="是否启用")
     remark: str | None = Field(None, description="备注")
 

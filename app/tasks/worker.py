@@ -4,6 +4,10 @@ ARQ Worker entry point for exchange-gateway.
 Run with:  python -m arq app.tasks.worker.WorkerSettings
 """
 
+import asyncio
+import time
+from pathlib import Path
+
 from arq import cron
 from arq.connections import RedisSettings
 from tortoise import Tortoise
@@ -17,16 +21,32 @@ from app.tasks.webhook_tasks import (
 )
 
 
+async def _heartbeat_loop(path: str = "/tmp/worker_heartbeat") -> None:
+    """Periodically prove that the ARQ event loop is still making progress."""
+    heartbeat = Path(path)
+    while True:
+        heartbeat.write_text(str(time.time()), encoding="utf-8")
+        await asyncio.sleep(10)
+
+
 async def startup(ctx: dict) -> None:
     """Initialize Tortoise ORM for the ARQ worker process."""
     from app.settings import TORTOISE_ORM
 
     await Tortoise.init(config=TORTOISE_ORM)
     ctx["db_initialized"] = True
+    ctx["heartbeat_task"] = asyncio.create_task(_heartbeat_loop())
 
 
 async def shutdown(ctx: dict) -> None:
     """Close Tortoise ORM connections."""
+    heartbeat_task = ctx.get("heartbeat_task")
+    if heartbeat_task:
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
     await Tortoise.close_connections()
 
 

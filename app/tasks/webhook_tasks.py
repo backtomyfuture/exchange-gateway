@@ -51,7 +51,11 @@ async def deliver_webhook_task(ctx: dict, delivery_id: int) -> dict:
     attempt = ctx["job_try"]
 
     try:
-        await _http_post_webhook(sub.url, delivery.payload, sub.secret)
+        # 数据库存储的是密文；签名必须始终使用创建时提供的原始密钥。
+        from app.utils.crypto import get_crypto
+
+        secret = get_crypto().decrypt(sub.secret)
+        await _http_post_webhook(sub.url, delivery.payload, secret)
         delivery.update_from_dict(
             {
                 "status": "delivered",

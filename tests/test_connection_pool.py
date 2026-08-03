@@ -125,3 +125,39 @@ async def test_remove_connection(connection_pool, mock_account_db):
 
         await connection_pool.close_account_connections(1)
         assert 1 not in connection_pool._pools
+
+
+@pytest.mark.asyncio
+async def test_context_manager_discards_connection_after_timeout():
+    """超时后的 EWS 线程可能仍在运行，连接不可再次归还池中。"""
+    pool = MagicMock()
+    conn = MagicMock()
+    pool.get_connection = AsyncMock(return_value=conn)
+    pool.release_connection = AsyncMock()
+    pool.discard_connection = AsyncMock()
+
+    with (
+        patch("app.services.exchange.connection_pool.get_connection_pool", return_value=pool),
+        pytest.raises(TimeoutError),
+    ):
+        async with get_exchange_connection(1):
+            raise TimeoutError
+
+    pool.discard_connection.assert_awaited_once_with(conn)
+    pool.release_connection.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_context_manager_releases_connection_after_success():
+    pool = MagicMock()
+    conn = MagicMock()
+    pool.get_connection = AsyncMock(return_value=conn)
+    pool.release_connection = AsyncMock()
+    pool.discard_connection = AsyncMock()
+
+    with patch("app.services.exchange.connection_pool.get_connection_pool", return_value=pool):
+        async with get_exchange_connection(1):
+            pass
+
+    pool.release_connection.assert_awaited_once_with(conn)
+    pool.discard_connection.assert_not_awaited()
