@@ -205,6 +205,7 @@
       "validate_events_required": "Please select at least one event",
       "validate_secret_required": "Please enter signing secret",
       "validate_secret_min": "Secret must be at least 8 characters",
+      "validate_secret_max": "Secret must be at most 256 characters",
       "tip_title": "Webhook Notes",
       "tip_header": "Callback URL Requirements",
       "tip_1": "Callback URL must be a publicly accessible HTTPS address",

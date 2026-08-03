@@ -127,6 +127,8 @@ class Settings(BaseSettings):
     EXCHANGE_STREAM_CONNECTION_TIMEOUT_MINUTES: int = int(os.getenv("EXCHANGE_STREAM_CONNECTION_TIMEOUT_MINUTES", "30"))
     # Streaming 异常重连等待（秒），仅在异常时生效
     EXCHANGE_STREAM_ERROR_RETRY_SECONDS: int = int(os.getenv("EXCHANGE_STREAM_ERROR_RETRY_SECONDS", "5"))
+    # 邮件详情的 EWS 查询上限；超时会以标准 504 响应返回。
+    EXCHANGE_EMAIL_DETAIL_TIMEOUT_SECONDS: float = float(os.getenv("EXCHANGE_EMAIL_DETAIL_TIMEOUT_SECONDS", "50"))
 
     # Redis 配置（用于分布式速率限制）
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")

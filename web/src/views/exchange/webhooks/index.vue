@@ -11,7 +11,6 @@ import {
   NPopconfirm,
   NSelect,
   NAlert,
-  NText,
   NSwitch,
 } from 'naive-ui'
 
@@ -39,7 +38,7 @@ async function loadAccounts() {
   try {
     const res = await api.getExchangeAccounts({ page_size: 100 })
     if (res.code === 200) {
-      accountOptions.value = (res.data || []).map(acc => ({
+      accountOptions.value = (res.data || []).map((acc) => ({
         label: `${acc.email} (ID: ${acc.id})`,
         value: acc.id,
       }))
@@ -57,7 +56,7 @@ const {
   modalForm,
   modalFormRef,
   handleAdd,
-  handleEdit,
+  handleEdit: openEdit,
   handleSave,
 } = useCRUD({
   name: t('exchange.webhooks.name'),
@@ -80,6 +79,11 @@ const {
   doDelete: ({ id }) => api.deleteWebhook(id),
   refresh: () => $table.value?.handleSearch(),
 })
+
+function handleEdit(row) {
+  // 服务端不会返回任何形式的密钥。编辑时留空，提交时也不会覆盖已有密钥。
+  openEdit({ ...row, secret: '' })
+}
 
 onMounted(() => {
   $table.value?.handleSearch()
@@ -115,7 +119,7 @@ const columns = [
     key: 'account_id',
     width: 120,
     render(row) {
-      const acc = accountOptions.value.find(a => a.value === row.account_id)
+      const acc = accountOptions.value.find((a) => a.value === row.account_id)
       return acc ? acc.label : `ID: ${row.account_id}`
     },
   },
@@ -130,9 +134,9 @@ const columns = [
         { size: 'small' },
         {
           default: () =>
-            events.slice(0, 3).map((e) =>
-              h(NTag, { size: 'small', type: 'info' }, { default: () => e })
-            ),
+            events
+              .slice(0, 3)
+              .map((e) => h(NTag, { size: 'small', type: 'info' }, { default: () => e })),
         }
       )
     },
@@ -146,7 +150,12 @@ const columns = [
       return h(
         NTag,
         { type: row.is_active ? 'success' : 'default' },
-        { default: () => (row.is_active ? t('exchange.webhooks.status_active') : t('exchange.webhooks.status_inactive')) }
+        {
+          default: () =>
+            row.is_active
+              ? t('exchange.webhooks.status_active')
+              : t('exchange.webhooks.status_inactive'),
+        }
       )
     },
   },
@@ -171,51 +180,55 @@ const columns = [
     align: 'center',
     fixed: 'right',
     render(row) {
-      return h(NSpace, { size: 'small' }, {
-        default: () => [
-          h(
-            NButton,
-            {
-              size: 'small',
-              type: 'primary',
-              onClick: () => handleTest(row),
-            },
-            {
-              default: () => t('exchange.webhooks.btn_test'),
-              icon: renderIcon('mdi:send', { size: 14 }),
-            }
-          ),
-          h(
-            NButton,
-            {
-              size: 'small',
-              onClick: () => handleEdit(row),
-            },
-            {
-              default: () => t('exchange.webhooks.btn_edit'),
-              icon: renderIcon('mdi:pencil', { size: 14 }),
-            }
-          ),
-          h(
-            NPopconfirm,
-            {
-              onPositiveClick: () => handleDelete(row),
-            },
-            {
-              trigger: () =>
-                h(
-                  NButton,
-                  { size: 'small', type: 'error' },
-                  {
-                    default: () => t('exchange.webhooks.btn_delete'),
-                    icon: renderIcon('material-symbols:delete-outline', { size: 14 }),
-                  }
-                ),
-              default: () => t('exchange.webhooks.confirm_delete'),
-            }
-          ),
-        ],
-      })
+      return h(
+        NSpace,
+        { size: 'small' },
+        {
+          default: () => [
+            h(
+              NButton,
+              {
+                size: 'small',
+                type: 'primary',
+                onClick: () => handleTest(row),
+              },
+              {
+                default: () => t('exchange.webhooks.btn_test'),
+                icon: renderIcon('mdi:send', { size: 14 }),
+              }
+            ),
+            h(
+              NButton,
+              {
+                size: 'small',
+                onClick: () => handleEdit(row),
+              },
+              {
+                default: () => t('exchange.webhooks.btn_edit'),
+                icon: renderIcon('mdi:pencil', { size: 14 }),
+              }
+            ),
+            h(
+              NPopconfirm,
+              {
+                onPositiveClick: () => handleDelete(row),
+              },
+              {
+                trigger: () =>
+                  h(
+                    NButton,
+                    { size: 'small', type: 'error' },
+                    {
+                      default: () => t('exchange.webhooks.btn_delete'),
+                      icon: renderIcon('material-symbols:delete-outline', { size: 14 }),
+                    }
+                  ),
+                default: () => t('exchange.webhooks.confirm_delete'),
+              }
+            ),
+          ],
+        }
+      )
     },
   },
 ]
@@ -249,14 +262,46 @@ async function handleDelete(row) {
   }
 }
 
+function validateSecret(rule, value) {
+  if (!value) {
+    return modalAction.value === 'add'
+      ? new Error(t('exchange.webhooks.validate_secret_required'))
+      : true
+  }
+  if (value.length < 8) {
+    return new Error(t('exchange.webhooks.validate_secret_min'))
+  }
+  if (value.length > 256) {
+    return new Error(t('exchange.webhooks.validate_secret_max'))
+  }
+  return true
+}
+
 const validateForm = {
-  account_id: [{ required: true, message: () => t('exchange.webhooks.validate_account_required'), trigger: 'change', type: 'number' }],
-  url: [{ required: true, message: () => t('exchange.webhooks.validate_url_required'), trigger: 'input' }],
-  events: [{ type: 'array', required: true, message: () => t('exchange.webhooks.validate_events_required'), trigger: 'change' }],
-  secret: [
-    { required: true, message: () => t('exchange.webhooks.validate_secret_required'), trigger: 'input' },
-    { min: 8, message: () => t('exchange.webhooks.validate_secret_min'), trigger: 'input' },
+  account_id: [
+    {
+      required: true,
+      message: () => t('exchange.webhooks.validate_account_required'),
+      trigger: 'change',
+      type: 'number',
+    },
   ],
+  url: [
+    {
+      required: true,
+      message: () => t('exchange.webhooks.validate_url_required'),
+      trigger: 'input',
+    },
+  ],
+  events: [
+    {
+      type: 'array',
+      required: true,
+      message: () => t('exchange.webhooks.validate_events_required'),
+      trigger: 'change',
+    },
+  ],
+  secret: [{ validator: validateSecret, trigger: ['input', 'blur'] }],
 }
 </script>
 
@@ -264,7 +309,9 @@ const validateForm = {
   <CommonPage show-footer :title="$t('exchange.webhooks.title')">
     <template #action>
       <NButton type="primary" @click="handleAdd">
-        <TheIcon icon="material-symbols:add" :size="18" class="mr-5" />{{ $t('exchange.webhooks.add') }}
+        <TheIcon icon="material-symbols:add" :size="18" class="mr-5" />{{
+          $t('exchange.webhooks.add')
+        }}
       </NButton>
     </template>
 
@@ -319,6 +366,7 @@ const validateForm = {
             v-model:value="modalForm.secret"
             type="password"
             show-password-on="click"
+            :maxlength="256"
             :placeholder="$t('exchange.webhooks.placeholder_secret')"
           />
           <template #feedback>
@@ -331,7 +379,12 @@ const validateForm = {
           <NSwitch v-model:value="modalForm.is_active" />
         </NFormItem>
         <NFormItem :label="$t('exchange.webhooks.form_remark')" path="remark">
-          <NInput v-model:value="modalForm.remark" type="textarea" clearable :placeholder="$t('exchange.webhooks.placeholder_remark')" />
+          <NInput
+            v-model:value="modalForm.remark"
+            type="textarea"
+            clearable
+            :placeholder="$t('exchange.webhooks.placeholder_remark')"
+          />
         </NFormItem>
       </NForm>
 

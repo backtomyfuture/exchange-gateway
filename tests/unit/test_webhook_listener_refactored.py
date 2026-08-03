@@ -107,6 +107,24 @@ class TestAsyncAccountListener:
         # 测试 None
         assert listener._serialize_value(None) is None
 
+    def test_serialize_exchange_event_uses_allowlist(self, listener):
+        class ItemId:
+            id = "item-123"
+            changekey = "change-key"
+
+        class Event:
+            item_id = ItemId()
+            timestamp = "2026-08-03T00:00:00Z"
+            subject = "不应投递的邮件主题"
+            secret = "不应投递的密钥"
+
+        result = listener._serialize_exchange_event(Event())
+
+        assert result == {
+            "item_id": {"id": "item-123", "changekey": "change-key"},
+            "timestamp": "2026-08-03T00:00:00Z",
+        }
+
 
 class TestWebhookDispatcher:
     """测试 Webhook 分发器"""

@@ -31,6 +31,12 @@ def test_mask_list_of_dicts():
     assert result["items"][1]["name"] == "ok"
 
 
+def test_mask_top_level_list():
+    result = _mask_sensitive([{"secret": "first"}, [{"token": "second"}]])
+
+    assert result == [{"secret": "***"}, [{"token": "***"}]]
+
+
 def test_non_dict_passthrough():
     assert _mask_sensitive("hello") == "hello"
     assert _mask_sensitive(42) == 42

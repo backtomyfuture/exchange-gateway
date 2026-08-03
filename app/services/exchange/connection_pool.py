@@ -53,6 +53,11 @@ class ExchangeConnection:
         """更新最后使用时间"""
         self.last_used_at = time.time()
 
+    def mark_unhealthy(self):
+        """标记失败连接，避免超时后被下一个请求复用。"""
+        # 当前连接池没有额外健康状态；实际移除由 discard_connection 完成。
+        return None
+
     async def is_healthy(self) -> bool:
         """检查连接是否健康"""
         try:
@@ -220,6 +225,23 @@ class ExchangeConnectionPool:
         """
         conn.touch()
         conn.in_use = False
+
+    async def discard_connection(self, conn: ExchangeConnection):
+        """移除失败连接，避免仍在后台运行的 EWS 调用被复用。"""
+        conn.mark_unhealthy()
+        conn.in_use = False
+        async with self._lock:
+            pool = self._pools.get(conn.account_id)
+            if pool is None:
+                return
+            retained = [item for item in pool if item is not conn]
+            if len(retained) == len(pool):
+                return
+            ExchangeConnectionPool._total_connections = max(0, ExchangeConnectionPool._total_connections - 1)
+            if retained:
+                self._pools[conn.account_id] = retained
+            else:
+                del self._pools[conn.account_id]
 
     async def close_account_connections(self, account_id: int):
         """
@@ -420,5 +442,8 @@ async def get_exchange_connection(account_id: int):
     conn = await pool.get_connection(account_id)
     try:
         yield conn
-    finally:
+    except BaseException:
+        await pool.discard_connection(conn)
+        raise
+    else:
         await pool.release_connection(conn)

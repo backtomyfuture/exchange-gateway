@@ -17,9 +17,17 @@ from exchangelib import (
     HTMLBody,
     Message,
 )
-from exchangelib.errors import ErrorInvalidSyncStateData, ErrorTimeoutExpired, TransportError
+from exchangelib.errors import (
+    ErrorInvalidPropertyRequest,
+    ErrorInvalidSyncStateData,
+    ErrorItemPropertyRequestFailed,
+    ErrorTimeoutExpired,
+    ErrorUnsupportedPropertyDefinition,
+    TransportError,
+)
 
 from app.core.arq_pool import get_arq_pool
+from app.core.exceptions import EmailNotFoundError, ExchangeConnectionError, ExchangeTimeoutError
 from app.log import logger
 from app.models.exchange import ExchangeMailLog
 from app.schemas.exchange import (
@@ -31,8 +39,35 @@ from app.schemas.exchange import (
     EmailSearchRequest,
     EmailSendRequest,
 )
+from app.settings import settings
+from app.utils.async_helpers import run_sync_with_timeout
 
 from .connection_pool import get_exchange_connection
+
+DETAIL_FIELDS = (
+    "id",
+    "subject",
+    "body",
+    "unique_body",
+    "sender",
+    "to_recipients",
+    "cc_recipients",
+    "datetime_received",
+    "is_read",
+    "attachments",
+    "conversation_id",
+    "conversation_index",
+    "message_id",
+    "in_reply_to",
+    "references",
+)
+DETAIL_FIELDS_WITHOUT_UNIQUE_BODY = tuple(field for field in DETAIL_FIELDS if field != "unique_body")
+_OPTIONAL_DETAIL_FIELD_ERRORS = (
+    ErrorInvalidPropertyRequest,
+    ErrorItemPropertyRequestFailed,
+    ErrorUnsupportedPropertyDefinition,
+)
+_MESSAGE_ID_PATTERN = re.compile(r"<[^<>\s]+>")
 
 
 def _resolve_folder(account, folder_name: str):
@@ -55,6 +90,89 @@ def _resolve_folder(account, folder_name: str):
         return account.junk
     # Arbitrary custom folder – look up relative to inbox
     return account.inbox / folder_name
+
+
+def _parse_references(value: str | None) -> list[str]:
+    """解析 EWS References 字段中的 Message-ID，同时保留原始字符串。"""
+    if not value:
+        return []
+    message_ids = _MESSAGE_ID_PATTERN.findall(value)
+    return message_ids if message_ids else value.split()
+
+
+def _get_email_detail_item(target_folder, email_id: str, fields: tuple[str, ...]):
+    """只读取邮件详情 API 已承诺的字段，避免不受控的全量取数。"""
+    return target_folder.all().only(*fields).get(id=email_id)
+
+
+def _build_body(body_text: str, body_type: str) -> tuple:
+    """构建正文并提取内嵌图片，返回 (body, inline_attachments)。"""
+    if body_type == "html":
+        from .format_utils import process_inline_images
+
+        processed_body, inline_attachments = process_inline_images(body_text)
+        return HTMLBody(processed_body) if processed_body else None, inline_attachments
+    return body_text, []
+
+
+def _attach_files(message, attachments=None, inline_attachments=None):
+    """向已保存的 Message 添加普通附件和内嵌图片附件。"""
+    if attachments:
+        for att in attachments:
+            message.attach(
+                FileAttachment(
+                    name=att.filename,
+                    content=base64.b64decode(att.content),
+                    content_type=att.content_type,
+                )
+            )
+    if inline_attachments:
+        for att_data in inline_attachments:
+            message.attach(
+                FileAttachment(
+                    name=att_data["filename"],
+                    content=base64.b64decode(att_data["content"]),
+                    content_type=att_data["content_type"],
+                    content_id=att_data["content_id"],
+                    is_inline=True,
+                )
+            )
+
+
+def _find_item(account, item_id: str, folder: str = "INBOX"):
+    """优先从指定文件夹读取，找不到时按 ItemId 直接从 Exchange 获取。"""
+    try:
+        item = _resolve_folder(account, folder).get(id=item_id)
+        if item:
+            return item
+    except Exception:
+        pass
+
+    items = list(account.fetch(ids=[item_id]))
+    if items and items[0]:
+        return items[0]
+    raise ValueError(f"Original email not found: {item_id}")
+
+
+def _send_via_draft(account, reply_item, attachments=None, inline_attachments=None, *, send: bool = True) -> dict:
+    """将 Reply/Forward 保存为草稿，再以 Message 形式附加文件并发送或保留。"""
+    saved = reply_item.save(account.drafts)
+    if saved is None:
+        raise ValueError("Failed to save reply/forward as draft")
+
+    draft_id = saved[0].id if isinstance(saved, list | tuple) else saved.id
+    draft_message = account.drafts.get(id=draft_id)
+    if not draft_message:
+        raise ValueError(f"Could not retrieve saved draft: {draft_id}")
+
+    _attach_files(draft_message, attachments, inline_attachments)
+    if send:
+        draft_message.send()
+        return {"sent": True}
+
+    if attachments or inline_attachments:
+        draft_message.save(update_fields=["attachments"])
+    return {"id": draft_message.id, "changekey": draft_message.changekey}
 
 
 class EmailService:
@@ -442,7 +560,12 @@ class EmailService:
 
                 def get_ops():
                     target_folder = _resolve_folder(conn.account, folder)
-                    item = target_folder.get(id=email_id)
+                    try:
+                        item = _get_email_detail_item(target_folder, email_id, DETAIL_FIELDS)
+                    except _OPTIONAL_DETAIL_FIELD_ERRORS as exc:
+                        # 某些旧版 Exchange 不支持 UniqueBody。降级后仍返回其余详情字段。
+                        logger.warning(f"EWS 不支持 UniqueBody，邮件详情将降级返回: {type(exc).__name__}")
+                        item = _get_email_detail_item(target_folder, email_id, DETAIL_FIELDS_WITHOUT_UNIQUE_BODY)
 
                     if not item:
                         return None
@@ -505,121 +628,108 @@ class EmailService:
                                 except Exception as e:
                                     logger.error(f"Failed to replace cid for {clean_cid}: {e}")
 
+                    unique_body = getattr(item, "unique_body", None)
+                    conversation = getattr(item, "conversation_id", None)
+                    conversation_id = conversation.id if conversation else None
+                    conversation_index = getattr(item, "conversation_index", None)
+                    references_value = getattr(item, "references", None)
+                    references_raw = str(references_value) if references_value is not None else None
+
                     return {
                         "id": item.id,
                         "subject": item.subject,
                         "body": body_content,
+                        "unique_body": str(unique_body) if unique_body is not None else None,
                         "sender": str(item.sender) if item.sender else None,
                         "to_recipients": [str(r) for r in item.to_recipients] if item.to_recipients else [],
                         "cc_recipients": [str(r) for r in item.cc_recipients] if item.cc_recipients else [],
                         "received_time": item.datetime_received.isoformat() if item.datetime_received else None,
                         "is_read": item.is_read,
                         "attachments": attachments,
+                        "conversation_id": conversation_id,
+                        "conversation_index": (
+                            base64.b64encode(conversation_index).decode("ascii") if conversation_index else None
+                        ),
+                        "internet_message_id": (
+                            str(item.message_id) if getattr(item, "message_id", None) is not None else None
+                        ),
+                        "in_reply_to": (
+                            str(item.in_reply_to) if getattr(item, "in_reply_to", None) is not None else None
+                        ),
+                        "references": _parse_references(references_raw),
+                        "references_raw": references_raw,
                     }
 
-                loop = asyncio.get_running_loop()
-                data = await loop.run_in_executor(None, get_ops)
+                data = await run_sync_with_timeout(
+                    get_ops,
+                    timeout=settings.EXCHANGE_EMAIL_DETAIL_TIMEOUT_SECONDS,
+                )
 
                 if not data:
-                    return {
-                        "success": False,
-                        "data": None,
-                        "message": "邮件不存在",
-                    }
+                    raise EmailNotFoundError("邮件不存在")
 
                 return {
                     "success": True,
                     "data": data,
                 }
 
-        except Exception as e:
-            logger.error(f"获取邮件详情失败: {e}")
-            return {
-                "success": False,
-                "data": None,
-                "message": str(e),
-            }
+        except TimeoutError as exc:
+            raise ExchangeTimeoutError("获取邮件详情超时") from exc
+        except (TransportError, ErrorTimeoutExpired) as exc:
+            raise ExchangeConnectionError(f"Exchange 连接失败: {exc}") from exc
 
     async def reply_email(
         self, request: EmailReplyRequest, api_key_id: int | None = None, request_ip: str | None = None
     ) -> dict:
         """
-        回复邮件 (Outlook 风格)
+        回复邮件。
+
+        exchangelib 的 BaseReplyItem 不支持 attach()。有附件或仅保存草稿时，
+        先保存为草稿再以 Message 形式附加文件。
         """
         try:
-            from app.services.exchange.format_utils import process_inline_images
-
             async with get_exchange_connection(request.account_id) as conn:
 
                 def reply_ops():
-                    # 查找原邮件
+                    item = _find_item(conn.account, request.reference_item_id, request.folder)
+                    body, inline_attachments = _build_body(request.body, request.body_type)
+                    has_attachments = bool(request.attachments) or bool(inline_attachments)
 
-                    try:
-                        item = conn.account.inbox.get(id=request.reference_item_id)
-                    except Exception:
-                        item = conn.account.fetch(ids=[request.reference_item_id])[0]
-
-                    if not item:
-                        raise ValueError("Original email not found")
-
-                    # 处理用户回复中可能包含的 Base64 图片 -> CID 附件
-                    # 注意：我们只处理用户的新回复内容，不包含原文
-                    # 原文由 Exchange Server 自动附加
-                    reply_body_html, user_inline_attachments = process_inline_images(request.body)
-
-                    # 创建回复
                     if request.reply_all:
                         reply_item = item.create_reply_all(
-                            subject=request.subject if request.subject else None, body=HTMLBody(reply_body_html)
+                            subject=request.subject if request.subject else None,
+                            body=body,
                         )
                     else:
                         reply_item = item.create_reply(
                             subject=request.subject if request.subject else None,
-                            body=HTMLBody(reply_body_html),
+                            body=body,
                             to_recipients=request.to if request.to else None,
                         )
 
-                    # 设置 CC/BCC
                     if request.cc:
                         reply_item.cc_recipients = request.cc
                     if request.bcc:
                         reply_item.bcc_recipients = request.bcc
 
-                    # 添加新附件 (用户上传的)
-                    if request.attachments:
-                        for att in request.attachments:
-                            content = base64.b64decode(att.content)
-                            file_attachment = FileAttachment(
-                                name=att.filename,
-                                content=content,
-                                content_type=att.content_type,
-                            )
-                            reply_item.attach(file_attachment)
-
-                    # 添加用户回复中提取的内嵌图片附件 (Base64 -> CID)
-                    for att_data in user_inline_attachments:
-                        content = base64.b64decode(att_data["content"])
-                        inline_att = FileAttachment(
-                            name=att_data["filename"],
-                            content=content,
-                            content_type=att_data["content_type"],
-                            content_id=att_data["content_id"],
-                            is_inline=True,
+                    if request.save_as_draft or has_attachments:
+                        return _send_via_draft(
+                            conn.account,
+                            reply_item,
+                            request.attachments,
+                            inline_attachments,
+                            send=not request.save_as_draft,
                         )
-                        reply_item.attach(inline_att)
-
-                    # 发送
                     reply_item.send()
 
-                    return True
+                    return {"sent": True}
 
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(None, reply_ops)
+                result = await run_sync_with_timeout(reply_ops, timeout=60.0)
 
                 await ExchangeMailLog.create(
                     api_key_id=api_key_id,
                     account_id=request.account_id,
-                    action="reply",
+                    action="reply_draft" if request.save_as_draft else "reply",
                     recipients=request.to,
                     cc_recipients=request.cc,
                     subject=request.subject,
@@ -628,43 +738,35 @@ class EmailService:
                     request_ip=request_ip,
                 )
 
+                if request.save_as_draft:
+                    return {"success": True, "message": "回复草稿已保存", **result}
                 return {"success": True, "message": "回复已发送"}
 
-        except Exception as e:
-            logger.error(f"回复邮件失败: {e}")
-            return {"success": False, "message": str(e)}
+        except TimeoutError as exc:
+            raise ExchangeTimeoutError("回复邮件超时") from exc
+        except (TransportError, ErrorTimeoutExpired) as exc:
+            raise ExchangeConnectionError(f"Exchange 连接失败: {exc}") from exc
+        except Exception as exc:
+            logger.error(f"回复邮件失败: {exc}")
+            return {"success": False, "message": str(exc)}
 
     async def forward_email(
         self, request: EmailForwardRequest, api_key_id: int | None = None, request_ip: str | None = None
     ) -> dict:
         """
-        转发邮件 (Outlook 风格)
+        转发邮件，支持指定来源文件夹、附件和仅保存草稿。
         """
         try:
-            from app.services.exchange.format_utils import process_inline_images
-
             async with get_exchange_connection(request.account_id) as conn:
 
                 def forward_ops():
-                    # 查找原邮件
-                    try:
-                        item = conn.account.inbox.get(id=request.reference_item_id)
-                    except Exception:
-                        item = conn.account.fetch(ids=[request.reference_item_id])[0]
+                    item = _find_item(conn.account, request.reference_item_id, request.folder)
+                    body, inline_attachments = _build_body(request.body, request.body_type)
+                    has_attachments = bool(request.attachments) or bool(inline_attachments)
 
-                    if not item:
-                        raise ValueError("Original email not found")
-
-                    # 处理转发附言中可能包含的 Base64 图片 -> CID 附件
-                    # 注意：我们只处理用户的新附言内容，不包含原文
-                    forward_body_html, user_inline_attachments = process_inline_images(request.body)
-
-                    # 创建转发
-                    # create_forward 会自动附加原邮件附件 (包括内嵌图片)
-                    # 也会自动引用原文
                     forward_item = item.create_forward(
                         subject=request.subject if request.subject else None,
-                        body=HTMLBody(forward_body_html),
+                        body=body,
                         to_recipients=request.to,
                     )
 
@@ -673,41 +775,24 @@ class EmailService:
                     if request.bcc:
                         forward_item.bcc_recipients = request.bcc
 
-                    # 添加用户附言中提取的内嵌图片附件
-                    for att_data in user_inline_attachments:
-                        content = base64.b64decode(att_data["content"])
-                        inline_att = FileAttachment(
-                            name=att_data["filename"],
-                            content=content,
-                            content_type=att_data["content_type"],
-                            content_id=att_data["content_id"],
-                            is_inline=True,
+                    if request.save_as_draft or has_attachments:
+                        return _send_via_draft(
+                            conn.account,
+                            forward_item,
+                            request.attachments,
+                            inline_attachments,
+                            send=not request.save_as_draft,
                         )
-                        forward_item.attach(inline_att)
-
-                    # 添加额外附件 (新上传的)
-                    if request.attachments:
-                        for att in request.attachments:
-                            content = base64.b64decode(att.content)
-                            file_attachment = FileAttachment(
-                                name=att.filename,
-                                content=content,
-                                content_type=att.content_type,
-                            )
-                            forward_item.attach(file_attachment)
-
-                    # 发送
                     forward_item.send()
 
-                    return True
+                    return {"sent": True}
 
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(None, forward_ops)
+                result = await run_sync_with_timeout(forward_ops, timeout=60.0)
 
                 await ExchangeMailLog.create(
                     api_key_id=api_key_id,
                     account_id=request.account_id,
-                    action="forward",
+                    action="forward_draft" if request.save_as_draft else "forward",
                     recipients=request.to,
                     cc_recipients=request.cc,
                     subject=request.subject,
@@ -716,11 +801,17 @@ class EmailService:
                     request_ip=request_ip,
                 )
 
+                if request.save_as_draft:
+                    return {"success": True, "message": "转发草稿已保存", **result}
                 return {"success": True, "message": "转发已发送"}
 
-        except Exception as e:
-            logger.error(f"转发邮件失败: {e}")
-            return {"success": False, "message": str(e)}
+        except TimeoutError as exc:
+            raise ExchangeTimeoutError("转发邮件超时") from exc
+        except (TransportError, ErrorTimeoutExpired) as exc:
+            raise ExchangeConnectionError(f"Exchange 连接失败: {exc}") from exc
+        except Exception as exc:
+            logger.error(f"转发邮件失败: {exc}")
+            return {"success": False, "message": str(exc)}
 
     async def delete_email(
         self,

@@ -12,6 +12,7 @@ import signal
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -39,6 +40,15 @@ BaseProtocol.HTTP_ADAPTER_CLS = LegacySSLAdapter
 
 # Global flag for shutdown
 SHUTDOWN = False
+
+
+async def _heartbeat_loop(path: str = "/tmp/worker_heartbeat") -> None:
+    """Periodically prove that the listener event loop is still making progress."""
+    heartbeat = Path(path)
+    while True:
+        heartbeat.write_text(str(time.time()), encoding="utf-8")
+        await asyncio.sleep(10)
+
 
 # Backward-compat alias for existing imports
 CircuitBreakerOpen = CircuitOpenError
@@ -361,21 +371,35 @@ class AsyncAccountListener:
             return None
 
     def _serialize_exchange_event(self, event) -> dict:
-        """序列化 Exchange 事件对象"""
-        data = {}
-
-        # 处理 ItemId 对象
+        """序列化 Exchange 事件对象，仅保留投递所需的已审核字段。"""
+        # ItemId 对象在多个事件字段中出现，单独处理以避免暴露其余属性。
         if hasattr(event, "id") and hasattr(event, "changekey"):
-            return {"id": event.id, "changekey": event.changekey}
+            item_id = getattr(event, "id", None)
+            changekey = getattr(event, "changekey", None)
+            data = {}
+            if isinstance(item_id, str) and item_id:
+                data["id"] = item_id
+            if isinstance(changekey, str) and changekey:
+                data["changekey"] = changekey
+            return data
 
-        for key in dir(event):
-            if key.startswith("_"):
-                continue
-            val = getattr(event, key)
-            if callable(val):
-                continue
-            data[key] = self._serialize_value(val)
+        data = {}
+        for key in (
+            "item_id",
+            "folder_id",
+            "parent_folder_id",
+            "old_item_id",
+            "old_folder_id",
+            "old_parent_folder_id",
+        ):
+            value = self._serialize_value(getattr(event, key, None))
+            if value is not None and value != {}:
+                data[key] = value
 
+        for key in ("timestamp", "watermark", "unread_count"):
+            value = self._serialize_value(getattr(event, key, None))
+            if value is not None:
+                data[key] = value
         return data
 
     def _serialize_value(self, val):
@@ -386,6 +410,8 @@ class AsyncAccountListener:
             return val
         if hasattr(val, "isoformat"):
             return val.isoformat()
+        if hasattr(val, "id") and hasattr(val, "changekey"):
+            return self._serialize_exchange_event(val)
         if hasattr(val, "__dict__"):
             return self._serialize_exchange_event(val)
         return str(val)
@@ -597,7 +623,12 @@ async def main():
     """主入口"""
     await Tortoise.init(config=settings.TORTOISE_ORM)
 
+    from app.core.arq_pool import init_arq_pool
+
+    await init_arq_pool()
+
     manager = WebhookManager()
+    heartbeat_task = asyncio.create_task(_heartbeat_loop())
 
     # Start queue processor
     queue_task = asyncio.create_task(manager.process_queue())
@@ -618,6 +649,11 @@ async def main():
     finally:
         # 优雅关闭
         logger.info("Shutting down...")
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
         queue_task.cancel()
         try:
             await queue_task
@@ -629,6 +665,9 @@ async def main():
             await manager._stop_listener(acc_id)
 
         await Tortoise.close_connections()
+        from app.core.arq_pool import close_arq_pool
+
+        await close_arq_pool()
         logger.info("Shutdown complete")
 
 

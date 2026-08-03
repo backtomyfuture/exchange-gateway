@@ -40,7 +40,8 @@ class WebhookService:
             items = await query.offset((page - 1) * page_size).limit(page_size).order_by("-id")
 
             # 转换为字典以便序列化
-            serialized_items = [await item.to_dict() for item in items]
+            # 原始密钥和加密后的密文均是敏感信息，列表接口也绝不返回。
+            serialized_items = [await item.to_dict(exclude_fields=["secret"]) for item in items]
 
             return {"success": True, "items": serialized_items, "total": total}
         except Exception as e:
@@ -96,7 +97,11 @@ class WebhookService:
                 status="success",
             )
 
-            return {"success": True, "message": "创建成功", "data": await webhook.to_dict()}
+            return {
+                "success": True,
+                "message": "创建成功",
+                "data": await webhook.to_dict(exclude_fields=["secret"]),
+            }
 
         except Exception as e:
             logger.error(f"创建 Webhook 失败: {e}")
@@ -117,15 +122,24 @@ class WebhookService:
                 return {"success": False, "message": "订阅不存在或无权修改"}
 
             # 更新字段
-            update_data = data.dict(exclude_unset=True)
+            update_data = data.model_dump(exclude_unset=True)
             if "url" in update_data:
                 update_data["url"] = str(update_data["url"])
 
             if "secret" in update_data:
-                from app.utils.crypto import get_crypto
+                raw_secret = update_data.pop("secret")
+                # 前端编辑表单不会回填旧密钥。显式传空值同样表示保持不变，
+                # 避免把 None 加密后写入数据库。
+                if raw_secret is not None:
+                    audit_details = {**update_data, "secret_changed": True}
+                    from app.utils.crypto import get_crypto
 
-                crypto = get_crypto()
-                update_data["secret"] = crypto.encrypt(update_data["secret"])
+                    crypto = get_crypto()
+                    update_data["secret"] = crypto.encrypt(raw_secret)
+                else:
+                    audit_details = update_data.copy()
+            else:
+                audit_details = update_data.copy()
 
             await webhook.update_from_dict(update_data)
             await webhook.save()
@@ -138,11 +152,15 @@ class WebhookService:
                 resource_type="webhook",
                 resource_id=webhook.id,
                 resource_name=str(webhook.url),
-                details=update_data,
+                details=audit_details,
                 status="success",
             )
 
-            return {"success": True, "message": "更新成功", "data": await webhook.to_dict()}
+            return {
+                "success": True,
+                "message": "更新成功",
+                "data": await webhook.to_dict(exclude_fields=["secret"]),
+            }
         except Exception as e:
             logger.error(f"更新 Webhook 失败: {e}")
             return {"success": False, "message": f"更新失败: {str(e)}"}
