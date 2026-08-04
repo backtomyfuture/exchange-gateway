@@ -1,5 +1,5 @@
 import os
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
@@ -52,7 +52,7 @@ def parse_database_url(database_url: str) -> dict:
         "host": parsed.hostname or "localhost",
         "port": parsed.port or 3306,
         "user": parsed.username or "root",
-        "password": parsed.password or "",
+        "password": unquote(parsed.password or ""),
         "database": parsed.path.lstrip("/") if parsed.path else "exchange_gateway",
     }
 
@@ -67,7 +67,14 @@ def _build_database_url() -> str:
     name = os.getenv("DB_NAME", "exchange_gateway")
     user = os.getenv("DB_USER", "root")
     password = get_secret("DB_PASSWORD", _DEV_DB_PASSWORD if DEV_MODE else "")
-    return f"mysql://{user}:{password}@{host}:{port}/{name}"
+    return f"mysql://{user}:{quote_password(password)}@{host}:{port}/{name}"
+
+
+def quote_password(password: str) -> str:
+    """Quote a database password before embedding it in a connection URL."""
+    from urllib.parse import quote
+
+    return quote(password, safe="")
 
 
 DATABASE_URL = _build_database_url()

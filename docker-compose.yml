@@ -25,6 +25,7 @@ x-app-secrets: &app-secrets
 
 x-app-env: &app-env
   ENV: ${ENV:-dev}
+  DEV_MODE: ${DEV_MODE:-false}
   DB_HOST: ${DB_HOST:-mysql}
   DB_PORT: ${DB_PORT:-3306}
   DB_NAME: ${DB_NAME:-exchange_gateway}
@@ -36,7 +37,7 @@ x-app-env: &app-env
   EXCHANGE_DOMAIN: ${EXCHANGE_DOMAIN:-}
   EXCHANGE_EMAIL_SUFFIX: ${EXCHANGE_EMAIL_SUFFIX:-}
   REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-  WEBHOOK_ALLOW_PRIVATE_URLS: "true"
+  WEBHOOK_ALLOW_PRIVATE_URLS: ${WEBHOOK_ALLOW_PRIVATE_URLS:-false}
   LOGS_ROOT: /var/log/app
 
 secrets:
