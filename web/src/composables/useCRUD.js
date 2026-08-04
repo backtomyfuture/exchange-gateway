@@ -10,7 +10,7 @@ const ACTIONS = {
 export default function ({ name, initForm = {}, doCreate, doDelete, doUpdate, refresh }) {
   const modalVisible = ref(false)
   const modalAction = ref('')
-  const modalTitle = computed(() => ACTIONS[modalAction.value]() + name)
+  const modalTitle = computed(() => `${ACTIONS[modalAction.value]?.() ?? ''}${name}`)
   const modalLoading = ref(false)
   const modalFormRef = ref(null)
   const modalForm = ref({ ...initForm })

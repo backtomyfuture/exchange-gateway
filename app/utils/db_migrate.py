@@ -19,7 +19,7 @@
 import asyncio
 import os
 import sys
-from urllib.parse import urlparse
+from urllib.parse import quote, unquote, urlparse
 
 
 def parse_database_url(database_url: str) -> dict:
@@ -29,7 +29,7 @@ def parse_database_url(database_url: str) -> dict:
         "host": parsed.hostname or "localhost",
         "port": parsed.port or 3306,
         "user": parsed.username or "root",
-        "password": parsed.password or "",
+        "password": unquote(parsed.password or ""),
         "database": parsed.path.lstrip("/") if parsed.path else "exchange_gateway",
     }
 
@@ -59,7 +59,7 @@ def get_tortoise_config():
                     pass
             if not pw:
                 pw = os.getenv("DB_PASSWORD", "")
-            database_url = f"mysql://{user}:{pw}@{host}:{port}/{name}"
+            database_url = f"mysql://{user}:{quote(pw, safe='')}@{host}:{port}/{name}"
 
     # DEV_MODE fallback
     if not database_url:

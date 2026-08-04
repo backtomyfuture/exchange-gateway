@@ -14,6 +14,7 @@ from functools import lru_cache
 from exchangelib import (
     UTC,
     FileAttachment,
+    FolderCollection,
     HTMLBody,
     Message,
 )
@@ -25,6 +26,7 @@ from exchangelib.errors import (
     ErrorUnsupportedPropertyDefinition,
     TransportError,
 )
+from exchangelib.folders.collections import SyncCompleted
 
 from app.core.arq_pool import get_arq_pool
 from app.core.exceptions import EmailNotFoundError, ExchangeConnectionError, ExchangeTimeoutError
@@ -90,6 +92,32 @@ def _resolve_folder(account, folder_name: str):
         return account.junk
     # Arbitrary custom folder – look up relative to inbox
     return account.inbox / folder_name
+
+
+def _sync_folder_changes(folder, *, sync_state: str | None, max_changes_returned: int, only_fields: list[str] | None):
+    """Fetch all changes while preserving the existing API response contract.
+
+    Use FolderCollection directly instead of Folder.sync_items.  The latter
+    replaces a falsy ``sync_state`` with ``folder.item_sync_state``.  The
+    collection API accepts the caller's state verbatim and retains the
+    original exchangelib behaviour of following all EWS pages before
+    completing.
+    """
+    collection = FolderCollection(account=folder.account, folders=[folder])
+    changes = []
+    try:
+        for change in collection.sync_items(
+            sync_state=sync_state,
+            max_changes_returned=max_changes_returned,
+            only_fields=only_fields,
+        ):
+            changes.append(change)
+    except SyncCompleted as completed:
+        return changes, completed.sync_state
+
+    # FolderCollection.sync_items is expected to raise SyncCompleted after
+    # its final page.  Fail loudly if exchangelib changes that contract.
+    raise RuntimeError("Exchange sync did not return a completion state")
 
 
 def _parse_references(value: str | None) -> list[str]:
@@ -1159,15 +1187,14 @@ class EmailService:
                 def sync_ops():
                     folder = _resolve_folder(conn.account, request.folder)
 
-                    # 执行同步 (Blocking)
-                    # max_changes_returned controls page size
+                    # 执行同步 (Blocking)。同步状态由客户端持有，不能使用
+                    # exchangelib Folder 对象上的隐式 item_sync_state。
                     try:
-                        changes = list(
-                            folder.sync_items(
-                                sync_state=request.sync_state,
-                                max_changes_returned=request.limit,
-                                only_fields=request.only_fields,
-                            )
+                        changes, new_sync_state = _sync_folder_changes(
+                            folder,
+                            sync_state=request.sync_state,
+                            max_changes_returned=request.limit,
+                            only_fields=request.only_fields,
                         )
                     except (binascii.Error, gzip.BadGzipFile, ErrorInvalidSyncStateData, ValueError) as e:
                         # 捕获 sync_state 反序列化错误
@@ -1182,9 +1209,6 @@ class EmailService:
                         # 如果是同步状态错误，通常意味着客户端需要重置 sync_state (即传 None 进行全量同步)
                         # 这里我们抛出一个ValueError，外层会捕获并返回错误信息
                         raise ValueError(f"Invalid sync_state: {str(e)}")
-
-                    # 获取新的 sync_state
-                    new_sync_state = folder.item_sync_state
 
                     result_items = []
                     for change_type, item in changes:

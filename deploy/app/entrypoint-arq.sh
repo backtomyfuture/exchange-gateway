@@ -10,6 +10,22 @@ echo "=========================================="
 echo "  ARQ Worker - Starting"
 echo "=========================================="
 
+# 读取 Docker Secrets；没有配置时再回退到环境变量。
+read_secret() {
+    local name="$1"
+    local file_var="${name}_FILE"
+    local file_path="${!file_var:-}"
+    if [ -n "$file_path" ] && [ -f "$file_path" ]; then
+        tr -d '\n' < "$file_path"
+    else
+        printf '%s' "${!name:-}"
+    fi
+}
+
+SECRET_KEY="$(read_secret SECRET_KEY)"
+EXCHANGE_ENCRYPTION_KEY="$(read_secret EXCHANGE_ENCRYPTION_KEY)"
+export SECRET_KEY EXCHANGE_ENCRYPTION_KEY
+
 # 生成缺失的安全密钥
 if [ -z "$SECRET_KEY" ]; then
     echo "WARNING: SECRET_KEY not set, generating one..."

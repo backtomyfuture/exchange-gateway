@@ -42,7 +42,8 @@ if [ -z "$DATABASE_URL" ] && [ -z "$MYSQL_URL" ]; then
     _name="${DB_NAME:-exchange_gateway}"
     _user="${DB_USER:-root}"
     _pass="${DB_PASSWORD:-}"
-    export DATABASE_URL="mysql://${_user}:${_pass}@${_host}:${_port}/${_name}"
+    _pass_encoded=$(python3 -c 'import sys; from urllib.parse import quote; print(quote(sys.argv[1], safe=""))' "${_pass}")
+    export DATABASE_URL="mysql://${_user}:${_pass_encoded}@${_host}:${_port}/${_name}"
 fi
 
 # --- Config ---
