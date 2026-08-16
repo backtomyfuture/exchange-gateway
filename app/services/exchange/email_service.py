@@ -459,6 +459,7 @@ class EmailService:
                     # 更新日志为成功
                     log_entry.status = "success"
                     log_entry.error_message = None
+                    log_entry.request_body = None
                     await log_entry.save()
 
                     logger.info(f"邮件发送成功 (LogID: {log_id})")

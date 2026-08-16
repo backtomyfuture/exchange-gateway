@@ -53,3 +53,4 @@ async def test_audit_log_sorts_before_pagination():
         "page": 2,
         "page_size": 10,
     }
+    audit_log.to_dict.assert_awaited_once_with(exclude_fields=["request_args", "response_body"])

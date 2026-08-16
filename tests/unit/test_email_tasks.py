@@ -64,3 +64,29 @@ async def test_send_email_task_raises_retry_on_transport_error(init_test_db):
         mock_svc.return_value = instance
         with pytest.raises(Retry):
             await send_email_task({"job_try": 1}, log.id)
+
+
+@pytest.mark.asyncio
+async def test_send_email_task_clears_request_body_after_success(init_test_db):
+    """Successful sends must not retain the serialized email request."""
+    from app.models.exchange import ExchangeMailLog
+    from app.tasks.email_tasks import send_email_task
+
+    log = await ExchangeMailLog.create(
+        account_id=1,
+        action="send",
+        status="pending",
+        recipients=["a@b.com"],
+        subject="test",
+        request_body={"account_id": 1, "to": ["a@b.com"], "subject": "test", "body": "body", "body_type": "text"},
+    )
+    with patch("app.tasks.email_tasks.get_email_service") as mock_svc:
+        instance = AsyncMock()
+        mock_svc.return_value = instance
+
+        result = await send_email_task({"job_try": 1}, log.id)
+
+    assert result["success"] is True
+    await log.refresh_from_db()
+    assert log.status == "success"
+    assert log.request_body is None

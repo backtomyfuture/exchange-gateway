@@ -54,7 +54,7 @@ async def send_email_task(ctx: dict, mail_log_id: int) -> dict:
         duration = time.monotonic() - start
         email_duration_seconds.labels(account_id=str(request.account_id)).observe(duration)
         email_sent_total.labels(account_id=str(request.account_id), status="success").inc()
-        log.update_from_dict({"status": "success"})
+        log.update_from_dict({"status": "success", "request_body": None})
         await log.save()
         logger.info("send_email_task: log %d sent successfully", mail_log_id)
         return {"success": True, "log_id": mail_log_id}

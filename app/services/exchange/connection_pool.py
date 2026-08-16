@@ -25,8 +25,9 @@ from app.settings import settings
 from app.utils.crypto import get_crypto
 from app.utils.exchange_adapter import LegacySSLAdapter
 
-# 禁用 SSL 警告
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+# 仅在显式不安全模式下禁用 SSL 警告；严格模式保留告警。
+if settings.EXCHANGE_TLS_INSECURE:
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 使用自定义 Adapter 解决 SSLEOFError 和主机名不匹配
 BaseProtocol.HTTP_ADAPTER_CLS = LegacySSLAdapter

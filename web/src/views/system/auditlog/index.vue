@@ -1,8 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NInput, NSelect, NPopover } from 'naive-ui'
-import TheIcon from '@/components/icon/TheIcon.vue'
+import { NInput, NSelect } from 'naive-ui'
 
 import CommonPage from '@/components/page/CommonPage.vue'
 import QueryBarItem from '@/components/query-bar/QueryBarItem.vue'
@@ -80,16 +79,6 @@ const methodOptions = [
   },
 ]
 
-function formatJSON(data) {
-  try {
-    return typeof data === 'string' 
-      ? JSON.stringify(JSON.parse(data), null, 2)
-      : JSON.stringify(data, null, 2)
-  } catch (e) {
-    return data || t('system.auditlog.no_data')
-  }
-}
-
 const columns = [
   {
     title: () => t('system.auditlog.col_username'),
@@ -134,60 +123,11 @@ const columns = [
     ellipsis: { tooltip: true },
   },
   {
-    title: () => t('system.auditlog.col_request_body'),
-    key: 'request_body',
+    title: () => t('system.auditlog.col_request_id'),
+    key: 'request_id',
     align: 'center',
-    width: 80,
-    render: (row) => {
-      return h(
-        NPopover,
-        {
-          trigger: 'hover',
-          placement: 'right',
-        },
-        {
-          trigger: () =>
-            h('div', { style: 'cursor: pointer;' }, [h(TheIcon, { icon: 'carbon:data-view' })]),
-          default: () =>
-            h(
-              'pre',
-              {
-                style:
-                  'max-height: 400px; overflow: auto; background-color: #f5f5f5; padding: 8px; border-radius: 4px;',
-              },
-              formatJSON(row.request_args)
-            ),
-        }
-      )
-    },
-  },
-  {
-    title: () => t('system.auditlog.col_response_body'),
-    key: 'response_body',
-    align: 'center',
-    width: 80,
-    render: (row) => {
-      return h(
-        NPopover,
-        {
-          trigger: 'hover',
-          placement: 'right',
-        },
-        {
-          trigger: () =>
-            h('div', { style: 'cursor: pointer;' }, [h(TheIcon, { icon: 'carbon:data-view' })]),
-          default: () =>
-            h(
-              'pre',
-              {
-                style:
-                  'max-height: 400px; overflow: auto; background-color: #f5f5f5; padding: 8px; border-radius: 4px;',
-              },
-              formatJSON(row.response_body)
-            ),
-        }
-      )
-    },
+    width: 'auto',
+    ellipsis: { tooltip: true },
   },
   {
     title: () => t('system.auditlog.col_response_time'),

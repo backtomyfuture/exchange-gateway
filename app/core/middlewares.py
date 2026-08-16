@@ -1,7 +1,5 @@
-import json
 import re
 import uuid
-from collections.abc import AsyncGenerator
 from contextvars import ContextVar
 from datetime import datetime
 from typing import Any
@@ -103,79 +101,8 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.methods = methods
         self.exclude_paths = exclude_paths
-        self.audit_log_paths = ["/api/v1/auditlog/list"]
-        self.max_body_size = 1024 * 1024  # 1MB 响应体大小限制
 
-    async def get_request_args(self, request: Request) -> dict:
-        args = {}
-        # 获取查询参数
-        for key, value in request.query_params.items():
-            args[key] = value
-
-        # 获取请求体
-        if request.method in ["POST", "PUT", "PATCH"]:
-            try:
-                body = await request.json()
-                args.update(body)
-            except json.JSONDecodeError:
-                try:
-                    body = await request.form()
-                    for k, v in body.items():
-                        if hasattr(v, "filename"):
-                            args[k] = v.filename
-                        elif isinstance(v, list) and v and hasattr(v[0], "filename"):
-                            args[k] = [file.filename for file in v]
-                        else:
-                            args[k] = v
-                except Exception:
-                    pass
-
-        return _mask_sensitive(args)
-
-    async def get_response_body(self, request: Request, response: Response) -> Any:
-        content_length = response.headers.get("content-length")
-        if content_length and int(content_length) > self.max_body_size:
-            return {"code": 0, "msg": "Response too large to log", "data": None}
-
-        if hasattr(response, "body"):
-            body = response.body
-        else:
-            body_chunks = []
-            async for chunk in response.body_iterator:
-                if not isinstance(chunk, bytes):
-                    chunk = chunk.encode(response.charset)
-                body_chunks.append(chunk)
-
-            response.body_iterator = self._async_iter(body_chunks)
-            body = b"".join(body_chunks)
-
-        if any(request.url.path.startswith(path) for path in self.audit_log_paths):
-            try:
-                data = self.lenient_json(body)
-                if isinstance(data, dict):
-                    data.pop("response_body", None)
-                    if "data" in data and isinstance(data["data"], list):
-                        for item in data["data"]:
-                            item.pop("response_body", None)
-                return data
-            except Exception:
-                return None
-
-        return self.lenient_json(body)
-
-    def lenient_json(self, v: Any) -> Any:
-        if isinstance(v, str | bytes):
-            try:
-                return json.loads(v)
-            except (ValueError, TypeError):
-                pass
-        return v
-
-    async def _async_iter(self, items: list[bytes]) -> AsyncGenerator[bytes, None]:
-        for item in items:
-            yield item
-
-    async def get_request_log(self, request: Request, response: Response) -> dict:
+    async def get_request_log(self, request: Request, response: Any) -> dict:
         """根据request和response对象获取对应的日志记录数据"""
         data: dict = {
             "path": request.url.path,
@@ -209,11 +136,13 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
             pass
         data["user_id"] = user_id
         data["username"] = username
+        data["request_id"] = getattr(request.state, "request_id", None) or CTX_REQUEST_ID.get() or None
         return data
 
     async def before_request(self, request: Request):
-        request_args = await self.get_request_args(request)
-        request.state.request_args = request_args
+        # Deliberately do not read the request body. Mail bodies and attachments
+        # must never enter the general HTTP audit trail.
+        return None
 
     async def after_request(self, request: Request, response: Response, process_time: int):
         if request.method in self.methods:
@@ -222,9 +151,10 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
                     return
             data: dict = await self.get_request_log(request=request, response=response)
             data["response_time"] = process_time
-
-            data["request_args"] = request.state.request_args
-            data["response_body"] = await self.get_response_body(request, response)
+            # Keep the legacy columns for schema compatibility, but never
+            # populate them with request or response content.
+            data["request_args"] = None
+            data["response_body"] = None
             try:
                 await AuditLog.create(**data)
             except Exception as e:

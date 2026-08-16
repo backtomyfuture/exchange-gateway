@@ -74,6 +74,7 @@ async def test_send_email_bg_task_success(email_service, mock_exchange_connectio
     # Verify success
     await log.refresh_from_db()
     assert log.status == "success"
+    assert log.request_body is None
 
     # Verify exchange call
     mock_exchange_connection.account.return_value = MagicMock()  # Mock account property
@@ -107,3 +108,4 @@ async def test_send_email_bg_task_retry(email_service, mock_exchange_connection,
     # Verify success eventually
     await log.refresh_from_db()
     assert log.status == "success"
+    assert log.request_body is None

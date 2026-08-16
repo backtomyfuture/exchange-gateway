@@ -260,7 +260,8 @@ class AsyncAccountListener:
         from exchangelib import DELEGATE, NTLM, Account, Configuration, Credentials
         from exchangelib.protocol import FaultTolerance
 
-        urllib3.disable_warnings()
+        if settings.EXCHANGE_TLS_INSECURE:
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
         server = self.config.get("server") or settings.EXCHANGE_SERVER
         domain = self.config.get("domain") or settings.EXCHANGE_DOMAIN

@@ -13,12 +13,9 @@ from arq.connections import RedisSettings
 from tortoise import Tortoise
 
 from app.settings import settings
+from app.tasks.cleanup_tasks import cleanup_sensitive_logs_task
 from app.tasks.email_tasks import send_email_task
-from app.tasks.webhook_tasks import (
-    deliver_webhook_task,
-    ping_all_accounts_task,
-    renew_subscriptions_task,
-)
+from app.tasks.webhook_tasks import deliver_webhook_task, ping_all_accounts_task
 
 
 async def _heartbeat_loop(path: str = "/tmp/worker_heartbeat") -> None:
@@ -53,8 +50,8 @@ async def shutdown(ctx: dict) -> None:
 class WorkerSettings:
     functions = [send_email_task, deliver_webhook_task]
     cron_jobs = [
-        cron(renew_subscriptions_task, minute={0, 30}),  # Every 30 min
         cron(ping_all_accounts_task, minute=set(range(0, 60, 5))),  # Every 5 min
+        cron(cleanup_sensitive_logs_task, hour=2, minute=0),  # Daily at 02:00
     ]
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
     on_startup = startup

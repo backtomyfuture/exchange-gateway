@@ -5,6 +5,7 @@
 
 from app.log import logger
 from app.models.exchange import ExchangeAccount
+from app.models.webhook import WebhookSubscription
 from app.utils.crypto import CredentialCrypto
 
 
@@ -115,6 +116,69 @@ class KeyRotator:
 
         return result
 
+    async def rotate_webhook_secret(self, webhook: WebhookSubscription) -> dict:
+        """Re-encrypt one webhook signing secret."""
+        try:
+            secret = self.old_crypto.decrypt(webhook.secret)
+            webhook.secret = self.new_crypto.encrypt(secret)
+            await webhook.save()
+            logger.info(f"Webhook 密钥轮换成功: {webhook.url}")
+            return {"success": True, "url": webhook.url, "error": None}
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Webhook 密钥轮换失败: {webhook.url}, 错误: {error_msg}")
+            return {"success": False, "url": webhook.url, "error": error_msg}
+
+    async def rotate_all_webhook_secrets(self, dry_run: bool = False) -> dict:
+        """Rotate every persisted webhook signing secret."""
+        webhooks = await WebhookSubscription.all()
+        total = len(webhooks)
+        success_count = 0
+        failures = []
+
+        logger.info(f"开始 Webhook 密钥轮换，共 {total} 个订阅，dry_run={dry_run}")
+        for webhook in webhooks:
+            if dry_run:
+                try:
+                    self.old_crypto.decrypt(webhook.secret)
+                    logger.info(f"[dry-run] Webhook 验证成功: {webhook.url}")
+                    success_count += 1
+                except Exception as e:
+                    failures.append({"url": webhook.url, "error": str(e)})
+            else:
+                result = await self.rotate_webhook_secret(webhook)
+                if result["success"]:
+                    success_count += 1
+                else:
+                    failures.append({"url": result["url"], "error": result["error"]})
+
+        return {
+            "total": total,
+            "success": success_count,
+            "failed": total - success_count,
+            "failures": failures,
+            "dry_run": dry_run,
+        }
+
+    async def rotate_all(self, dry_run: bool = False) -> dict:
+        """Rotate both Exchange account passwords and webhook secrets."""
+        account_result = await self.rotate_all_accounts(dry_run=dry_run)
+        webhook_result = await self.rotate_all_webhook_secrets(dry_run=dry_run)
+        result = {
+            "total": account_result["total"] + webhook_result["total"],
+            "success": account_result["success"] + webhook_result["success"],
+            "failed": account_result["failed"] + webhook_result["failed"],
+            "failures": account_result["failures"] + webhook_result["failures"],
+            "dry_run": dry_run,
+            "accounts": account_result,
+            "webhooks": webhook_result,
+        }
+        logger.info(
+            f"全部加密数据轮换完成: {result['success']}/{result['total']} 成功，"
+            f"失败 {result['failed']}"
+        )
+        return result
+
     def verify_keys(self) -> dict:
         """
         验证新旧密钥是否有效
@@ -166,4 +230,4 @@ async def rotate_encryption_key(old_key: str, new_key: str, dry_run: bool = Fals
         return {"error": "新密钥无效", "key_check": key_check}
 
     # 执行轮换
-    return await rotator.rotate_all_accounts(dry_run=dry_run)
+    return await rotator.rotate_all(dry_run=dry_run)
