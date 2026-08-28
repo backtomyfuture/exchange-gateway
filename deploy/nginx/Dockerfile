@@ -1,8 +1,8 @@
 # Stage 1: Build frontend
 FROM node:18-alpine AS build-stage
 
-# 安装 pnpm
-RUN npm install -g pnpm
+# 钉 pnpm 9：pnpm 10 默认忽略依赖 build scripts，会报 ERR_PNPM_IGNORED_BUILDS
+RUN npm install -g pnpm@9.15.9
 
 WORKDIR /app
 
@@ -10,7 +10,7 @@ WORKDIR /app
 COPY web/package.json web/pnpm-lock.yaml* ./
 
 # 安装依赖
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
 # 复制源码并构建
 COPY web/ .

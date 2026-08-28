@@ -49,6 +49,13 @@
       "eslint --ext .js,.vue ."
     ]
   },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "es5-ext",
+      "esbuild",
+      "vue-demi"
+    ]
+  },
   "eslintConfig": {
     "extends": [
       "@zclzone",
