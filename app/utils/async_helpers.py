@@ -30,11 +30,28 @@ def _get_semaphore() -> asyncio.Semaphore:
 
 
 async def run_sync_with_timeout(func: Callable[..., Any], *args: Any, timeout: float = 30.0, **kwargs: Any) -> Any:
-    """在专用 EWS 线程池中运行同步函数，带超时和并发保护。"""
+    """在专用 EWS 线程池中运行同步函数，带超时和并发保护。
+
+    Cancelling ``run_in_executor`` only detaches the awaiting coroutine. The
+    synchronous EWS request keeps running in its worker thread, so its
+    concurrency permit must remain held until the worker actually exits.
+    Otherwise repeated client-side timeouts can enqueue unbounded EWS work.
+    """
     loop = asyncio.get_running_loop()
     bound = partial(func, *args, **kwargs)
-    async with _get_semaphore():
-        return await asyncio.wait_for(
-            loop.run_in_executor(_ews_executor, bound),
-            timeout=timeout,
-        )
+    semaphore = _get_semaphore()
+    await semaphore.acquire()
+    future = None
+    try:
+        future = loop.run_in_executor(_ews_executor, bound)
+        future.add_done_callback(lambda _: semaphore.release())
+        # Shield the executor future. ``wait_for`` may time out the caller,
+        # but the callback above still releases capacity only after the
+        # underlying blocking operation is no longer using a worker thread.
+        return await asyncio.wait_for(asyncio.shield(future), timeout=timeout)
+    except BaseException:
+        # Submission can fail before a Future exists. Once it exists, its
+        # done callback owns the matching release, including cancellation.
+        if future is None:
+            semaphore.release()
+        raise

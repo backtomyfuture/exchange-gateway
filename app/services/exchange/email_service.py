@@ -64,6 +64,14 @@ DETAIL_FIELDS = (
     "references",
 )
 DETAIL_FIELDS_WITHOUT_UNIQUE_BODY = tuple(field for field in DETAIL_FIELDS if field != "unique_body")
+LIST_FIELDS = (
+    "id",
+    "subject",
+    "sender",
+    "datetime_received",
+    "is_read",
+    "has_attachments",
+)
 _OPTIONAL_DETAIL_FIELD_ERRORS = (
     ErrorInvalidPropertyRequest,
     ErrorItemPropertyRequestFailed,
@@ -496,58 +504,64 @@ class EmailService:
         获取邮件列表
         """
         try:
-            async with get_exchange_connection(request.account_id) as conn:
+            async with asyncio.timeout(settings.EXCHANGE_EMAIL_LIST_TIMEOUT_SECONDS):
+                async with get_exchange_connection(request.account_id) as conn:
 
-                def list_ops():
-                    try:
-                        folder = _resolve_folder(conn.account, request.folder)
+                    def list_ops():
+                        try:
+                            folder = _resolve_folder(conn.account, request.folder)
 
-                        # 构建查询
-                        if request.unread_only:
-                            qs = folder.filter(is_read=False)
-                        else:
-                            qs = folder.all()
+                            # A list response is deliberately metadata-only.
+                            # Without only(), exchangelib can ask Exchange to
+                            # hydrate fields that the endpoint never returns.
+                            if request.unread_only:
+                                qs = folder.filter(is_read=False)
+                            else:
+                                qs = folder.all()
+                            qs = qs.only(*LIST_FIELDS)
 
-                        # 获取总数 (Blocking I/O)
-                        total_count = qs.count()
+                            # 获取总数 (Blocking I/O)
+                            total_count = qs.count()
 
-                        # 分页获取 (Blocking I/O)
-                        fetched_items = qs.order_by("-datetime_received")[
-                            request.offset : request.offset + request.limit
-                        ]
+                            # 分页获取 (Blocking I/O)
+                            fetched_items = qs.order_by("-datetime_received")[
+                                request.offset : request.offset + request.limit
+                            ]
 
-                        # 转换为响应格式
-                        email_list = []
-                        for item in fetched_items:
-                            # 将 EWSDateTime 转换为 Python datetime
-                            received_time = None
-                            if item.datetime_received:
-                                received_time = datetime(
-                                    item.datetime_received.year,
-                                    item.datetime_received.month,
-                                    item.datetime_received.day,
-                                    item.datetime_received.hour,
-                                    item.datetime_received.minute,
-                                    item.datetime_received.second,
+                            # 转换为响应格式
+                            email_list = []
+                            for item in fetched_items:
+                                # 将 EWSDateTime 转换为 Python datetime
+                                received_time = None
+                                if item.datetime_received:
+                                    received_time = datetime(
+                                        item.datetime_received.year,
+                                        item.datetime_received.month,
+                                        item.datetime_received.day,
+                                        item.datetime_received.hour,
+                                        item.datetime_received.minute,
+                                        item.datetime_received.second,
+                                    )
+
+                                email_list.append(
+                                    EmailItem(
+                                        id=item.id,
+                                        subject=item.subject,
+                                        sender=str(item.sender) if item.sender else None,
+                                        received_time=received_time,
+                                        is_read=item.is_read,
+                                        has_attachments=item.has_attachments,
+                                    )
                                 )
+                            return total_count, email_list
+                        except Exception as e:
+                            logger.error(f"List ops error: {e}")
+                            raise
 
-                            email_list.append(
-                                EmailItem(
-                                    id=item.id,
-                                    subject=item.subject,
-                                    sender=str(item.sender) if item.sender else None,
-                                    received_time=received_time,
-                                    is_read=item.is_read,
-                                    has_attachments=item.has_attachments,
-                                )
-                            )
-                        return total_count, email_list
-                    except Exception as e:
-                        logger.error(f"List ops error: {e}")
-                        raise
-
-                loop = asyncio.get_running_loop()
-                total, email_items = await loop.run_in_executor(None, list_ops)
+                    total, email_items = await run_sync_with_timeout(
+                        list_ops,
+                        timeout=settings.EXCHANGE_EMAIL_LIST_TIMEOUT_SECONDS,
+                    )
 
                 # 记录日志
                 await ExchangeMailLog.create(
@@ -564,6 +578,12 @@ class EmailService:
                     "items": email_items,
                 }
 
+        except TimeoutError as exc:
+            logger.warning(f"获取邮件列表超时: account={request.account_id}, limit={request.limit}")
+            raise ExchangeTimeoutError("获取邮件列表超时") from exc
+        except (TransportError, ErrorTimeoutExpired) as exc:
+            logger.warning(f"获取邮件列表连接失败: {exc}")
+            raise ExchangeConnectionError(f"Exchange 连接失败: {exc}") from exc
         except Exception as e:
             logger.error(f"获取邮件列表失败: {e}")
             return {
@@ -1183,90 +1203,93 @@ class EmailService:
         try:
             from app.models.exchange import ExchangeMailLog
 
-            async with get_exchange_connection(request.account_id) as conn:
+            async with asyncio.timeout(settings.EXCHANGE_EMAIL_SYNC_TIMEOUT_SECONDS):
+                async with get_exchange_connection(request.account_id) as conn:
 
-                def sync_ops():
-                    folder = _resolve_folder(conn.account, request.folder)
+                    def sync_ops():
+                        folder = _resolve_folder(conn.account, request.folder)
 
-                    # 执行同步 (Blocking)。同步状态由客户端持有，不能使用
-                    # exchangelib Folder 对象上的隐式 item_sync_state。
-                    try:
-                        changes, new_sync_state = _sync_folder_changes(
-                            folder,
-                            sync_state=request.sync_state,
-                            max_changes_returned=request.limit,
-                            only_fields=request.only_fields,
-                        )
-                    except (binascii.Error, gzip.BadGzipFile, ErrorInvalidSyncStateData, ValueError) as e:
-                        # 捕获 sync_state 反序列化错误
-                        # 如果 sync_state 无效（例如被截断、编码错误），记录日志并抛出更友好的错误
-                        # 有时客户端传递的 Base64 字符串可能包含空格而不是加号，尝试修复（虽然 requests 通常处理）
-                        # 但如果仍然失败，则视为状态过期或无效
-                        logger.error(
-                            f"Sync state processing error: {e}. State prefix: {str(request.sync_state)[:20] if request.sync_state else 'None'}"
-                        )
+                        # 执行同步 (Blocking)。同步状态由客户端持有，不能使用
+                        # exchangelib Folder 对象上的隐式 item_sync_state。
+                        try:
+                            changes, new_sync_state = _sync_folder_changes(
+                                folder,
+                                sync_state=request.sync_state,
+                                max_changes_returned=request.limit,
+                                only_fields=request.only_fields,
+                            )
+                        except (binascii.Error, gzip.BadGzipFile, ErrorInvalidSyncStateData, ValueError) as e:
+                            # 捕获 sync_state 反序列化错误
+                            # 如果 sync_state 无效（例如被截断、编码错误），记录日志并抛出更友好的错误
+                            # 有时客户端传递的 Base64 字符串可能包含空格而不是加号，尝试修复（虽然 requests 通常处理）
+                            # 但如果仍然失败，则视为状态过期或无效
+                            logger.error(
+                                f"Sync state processing error: {e}. State prefix: {str(request.sync_state)[:20] if request.sync_state else 'None'}"
+                            )
 
-                        # 可以选择抛出特定异常，或者在这里决定如何处理
-                        # 如果是同步状态错误，通常意味着客户端需要重置 sync_state (即传 None 进行全量同步)
-                        # 这里我们抛出一个ValueError，外层会捕获并返回错误信息
-                        raise ValueError(f"Invalid sync_state: {str(e)}")
+                            # 可以选择抛出特定异常，或者在这里决定如何处理
+                            # 如果是同步状态错误，通常意味着客户端需要重置 sync_state (即传 None 进行全量同步)
+                            # 这里我们抛出一个ValueError，外层会捕获并返回错误信息
+                            raise ValueError(f"Invalid sync_state: {str(e)}")
 
-                    result_items = []
-                    for change_type, item in changes:
-                        # change_type: 'create', 'update', 'delete', 'read_flag_change'
+                        result_items = []
+                        for change_type, item in changes:
+                            # change_type: 'create', 'update', 'delete', 'read_flag_change'
 
-                        # Ensure item_id is extracted as a string
-                        item_id = None
-                        target_item = item
+                            # Ensure item_id is extracted as a string
+                            item_id = None
+                            target_item = item
 
-                        # Handle tuple case (e.g. read_flag_change yields (ItemId, is_read))
-                        if isinstance(item, list | tuple) and len(item) > 0:
-                            target_item = item[0]
+                            # Handle tuple case (e.g. read_flag_change yields (ItemId, is_read))
+                            if isinstance(item, list | tuple) and len(item) > 0:
+                                target_item = item[0]
 
-                        if hasattr(target_item, "id"):
-                            item_id = target_item.id
-                        elif hasattr(target_item, "item_id") and hasattr(target_item.item_id, "id"):
-                            item_id = target_item.item_id.id
-                        else:
-                            # Fallback
-                            item_id = str(target_item)
+                            if hasattr(target_item, "id"):
+                                item_id = target_item.id
+                            elif hasattr(target_item, "item_id") and hasattr(target_item.item_id, "id"):
+                                item_id = target_item.item_id.id
+                            else:
+                                # Fallback
+                                item_id = str(target_item)
 
-                        # Force string conversion to avoid ItemId objects
-                        if item_id is not None:
-                            item_id = str(item_id)
+                            # Force string conversion to avoid ItemId objects
+                            if item_id is not None:
+                                item_id = str(item_id)
 
-                        sync_item = {"change_type": change_type, "id": item_id, "item": None}
+                            sync_item = {"change_type": change_type, "id": item_id, "item": None}
 
-                        # 如果是 create 或 update，item 是 Message 对象
-                        # 如果是 delete 或 read_flag_change，item 是 ItemId (或类似包含ID的对象)
-                        if change_type in ("create", "update"):
-                            # 转换为 EmailItem
-                            received_time = None
-                            if hasattr(item, "datetime_received") and item.datetime_received:
-                                received_time = datetime(
-                                    item.datetime_received.year,
-                                    item.datetime_received.month,
-                                    item.datetime_received.day,
-                                    item.datetime_received.hour,
-                                    item.datetime_received.minute,
-                                    item.datetime_received.second,
-                                )
+                            # 如果是 create 或 update，item 是 Message 对象
+                            # 如果是 delete 或 read_flag_change，item 是 ItemId (或类似包含ID的对象)
+                            if change_type in ("create", "update"):
+                                # 转换为 EmailItem
+                                received_time = None
+                                if hasattr(item, "datetime_received") and item.datetime_received:
+                                    received_time = datetime(
+                                        item.datetime_received.year,
+                                        item.datetime_received.month,
+                                        item.datetime_received.day,
+                                        item.datetime_received.hour,
+                                        item.datetime_received.minute,
+                                        item.datetime_received.second,
+                                    )
 
-                            sync_item["item"] = {
-                                "id": item_id,
-                                "subject": item.subject if hasattr(item, "subject") else None,
-                                "sender": str(item.sender) if hasattr(item, "sender") and item.sender else None,
-                                "received_time": received_time,
-                                "is_read": item.is_read if hasattr(item, "is_read") else False,
-                                "has_attachments": item.has_attachments if hasattr(item, "has_attachments") else False,
-                            }
+                                sync_item["item"] = {
+                                    "id": item_id,
+                                    "subject": item.subject if hasattr(item, "subject") else None,
+                                    "sender": str(item.sender) if hasattr(item, "sender") and item.sender else None,
+                                    "received_time": received_time,
+                                    "is_read": item.is_read if hasattr(item, "is_read") else False,
+                                    "has_attachments": item.has_attachments if hasattr(item, "has_attachments") else False,
+                                }
 
-                        result_items.append(sync_item)
+                            result_items.append(sync_item)
 
-                    return new_sync_state, result_items
+                        return new_sync_state, result_items
 
-                loop = asyncio.get_running_loop()
-                new_state, items = await loop.run_in_executor(None, sync_ops)
+                    new_state, items = await run_sync_with_timeout(
+                        sync_ops,
+                        timeout=settings.EXCHANGE_EMAIL_SYNC_TIMEOUT_SECONDS,
+                    )
 
                 # 记录审计日志
                 await ExchangeMailLog.create(
@@ -1283,6 +1306,12 @@ class EmailService:
                     "items": items,
                 }
 
+        except TimeoutError as exc:
+            logger.warning(f"邮件同步超时: account={request.account_id}, limit={request.limit}")
+            raise ExchangeTimeoutError("邮件同步超时") from exc
+        except (TransportError, ErrorTimeoutExpired) as exc:
+            logger.warning(f"邮件同步连接失败: {exc}")
+            raise ExchangeConnectionError(f"Exchange 连接失败: {exc}") from exc
         except Exception as e:
             logger.error(f"同步邮件失败: {e}")
             return {

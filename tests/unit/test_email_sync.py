@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.core.exceptions import ExchangeTimeoutError
 from app.schemas.exchange import EmailSyncRequest
 from app.services.exchange.email_service import EmailService, _sync_folder_changes
 
@@ -107,3 +108,23 @@ async def test_sync_emails_returns_compatible_sync_response():
             }
         ],
     }
+
+
+@pytest.mark.asyncio
+async def test_sync_emails_turns_executor_timeout_into_gateway_504():
+    service = EmailService()
+    request = EmailSyncRequest(account_id=1, sync_state=None, limit=50)
+    exchange_connection = AsyncMock()
+    exchange_connection.account = MagicMock()
+
+    with (
+        patch("app.services.exchange.email_service.get_exchange_connection", return_value=exchange_connection),
+        patch(
+            "app.services.exchange.email_service.run_sync_with_timeout",
+            new=AsyncMock(side_effect=TimeoutError),
+        ) as run_sync,
+        pytest.raises(ExchangeTimeoutError, match="邮件同步超时"),
+    ):
+        await service.sync_emails(request)
+
+    run_sync.assert_awaited_once()

@@ -143,6 +143,16 @@ class Settings(BaseSettings):
     EXCHANGE_STREAM_CONNECTION_TIMEOUT_MINUTES: int = int(os.getenv("EXCHANGE_STREAM_CONNECTION_TIMEOUT_MINUTES", "30"))
     # Streaming 异常重连等待（秒），仅在异常时生效
     EXCHANGE_STREAM_ERROR_RETRY_SECONDS: int = int(os.getenv("EXCHANGE_STREAM_ERROR_RETRY_SECONDS", "5"))
+    # 单次 EWS HTTP 请求上限。必须显著小于网关代理的 60 秒读超时，
+    # 否则同步 requests 调用会在线程池内长期占用 EWS 会话。
+    EXCHANGE_EWS_REQUEST_TIMEOUT_SECONDS: float = float(os.getenv("EXCHANGE_EWS_REQUEST_TIMEOUT_SECONDS", "20"))
+    # EWS 的短暂繁忙响应最多等待多久。交互式 API 不应在服务端退避时
+    # 长时间占住唯一的 EWS session。
+    EXCHANGE_EWS_RETRY_MAX_WAIT_SECONDS: float = float(os.getenv("EXCHANGE_EWS_RETRY_MAX_WAIT_SECONDS", "5"))
+    # 列表和增量同步的端到端时限。它们必须在 Nginx 60 秒上游超时之前
+    # 结束，以便返回可识别的 504 而不是让 upstream 失联。
+    EXCHANGE_EMAIL_LIST_TIMEOUT_SECONDS: float = float(os.getenv("EXCHANGE_EMAIL_LIST_TIMEOUT_SECONDS", "45"))
+    EXCHANGE_EMAIL_SYNC_TIMEOUT_SECONDS: float = float(os.getenv("EXCHANGE_EMAIL_SYNC_TIMEOUT_SECONDS", "45"))
     # 邮件详情的 EWS 查询上限；超时会以标准 504 响应返回。
     EXCHANGE_EMAIL_DETAIL_TIMEOUT_SECONDS: float = float(os.getenv("EXCHANGE_EMAIL_DETAIL_TIMEOUT_SECONDS", "50"))
 
@@ -199,6 +209,21 @@ class Settings(BaseSettings):
 
         if self.EXCHANGE_STREAM_ERROR_RETRY_SECONDS < 0:
             raise ValueError("EXCHANGE_STREAM_ERROR_RETRY_SECONDS 不能小于 0")
+
+        if not 1 <= self.EXCHANGE_EWS_REQUEST_TIMEOUT_SECONDS < 60:
+            raise ValueError("EXCHANGE_EWS_REQUEST_TIMEOUT_SECONDS 必须在 1 到 60 秒之间")
+
+        if not 0 <= self.EXCHANGE_EWS_RETRY_MAX_WAIT_SECONDS < 60:
+            raise ValueError("EXCHANGE_EWS_RETRY_MAX_WAIT_SECONDS 必须在 0 到 60 秒之间")
+
+        for name, timeout in (
+            ("EXCHANGE_EMAIL_LIST_TIMEOUT_SECONDS", self.EXCHANGE_EMAIL_LIST_TIMEOUT_SECONDS),
+            ("EXCHANGE_EMAIL_SYNC_TIMEOUT_SECONDS", self.EXCHANGE_EMAIL_SYNC_TIMEOUT_SECONDS),
+        ):
+            if not self.EXCHANGE_EWS_REQUEST_TIMEOUT_SECONDS < timeout < 60:
+                raise ValueError(
+                    f"{name} 必须大于 EXCHANGE_EWS_REQUEST_TIMEOUT_SECONDS 且小于 60 秒"
+                )
 
         if not 7 <= self.AUDIT_LOG_RETENTION_DAYS <= 30:
             raise ValueError("AUDIT_LOG_RETENTION_DAYS 必须在 7 到 30 之间")
