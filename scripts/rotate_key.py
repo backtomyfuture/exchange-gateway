@@ -87,20 +87,21 @@ async def main():
         mode = "验证" if args.dry_run else "轮换"
         print(f"\n🔄 开始{mode}...")
 
-        result = await rotator.rotate_all_accounts(dry_run=args.dry_run)
+        result = await rotator.rotate_all(dry_run=args.dry_run)
 
         # 输出结果
         print(f"\n{'=' * 50}")
         print(f"  {mode}完成")
         print(f"{'=' * 50}")
-        print(f"  总计: {result['total']} 个账户")
+        print(f"  总计: {result['total']} 条加密记录")
         print(f"  成功: {result['success']} 个")
         print(f"  失败: {result['failed']} 个")
 
         if result["failures"]:
             print("\n❌ 失败列表:")
             for f in result["failures"]:
-                print(f"  - {f['email']}: {f['error']}")
+                resource = f.get("email") or f.get("url") or "unknown"
+                print(f"  - {resource}: {f['error']}")
 
         if args.dry_run:
             print("\n💡 提示: 这是验证模式，数据未被修改")

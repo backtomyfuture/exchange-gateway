@@ -23,14 +23,20 @@ SECRET_KEY=$(read_secret SECRET_KEY)
 EXCHANGE_ENCRYPTION_KEY=$(read_secret EXCHANGE_ENCRYPTION_KEY)
 DB_PASSWORD=$(read_secret DB_PASSWORD)
 
-# Auto-generate dev secrets if missing
-if [ -z "$SECRET_KEY" ]; then
-    SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
-    echo "WARNING: SECRET_KEY not set, auto-generated (dev only)"
-fi
-if [ -z "$EXCHANGE_ENCRYPTION_KEY" ]; then
-    EXCHANGE_ENCRYPTION_KEY=$(python3 -c "import base64,os; print(base64.b64encode(os.urandom(32)).decode())")
-    echo "WARNING: EXCHANGE_ENCRYPTION_KEY not set, auto-generated (dev only)"
+# Auto-generate secrets only in development. Production must use stable
+# injected/sealed secrets so replicas can verify the same JWTs and ciphertext.
+if [ "${DEV_MODE:-false}" = "true" ] || [ "${DEV_MODE:-false}" = "1" ] || [ "${DEV_MODE:-false}" = "yes" ]; then
+    if [ -z "$SECRET_KEY" ]; then
+        SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+        echo "WARNING: SECRET_KEY not set, auto-generated (development only)"
+    fi
+    if [ -z "$EXCHANGE_ENCRYPTION_KEY" ]; then
+        EXCHANGE_ENCRYPTION_KEY=$(python3 -c "import base64,os; print(base64.b64encode(os.urandom(32)).decode())")
+        echo "WARNING: EXCHANGE_ENCRYPTION_KEY not set, auto-generated (development only)"
+    fi
+elif [ -z "$SECRET_KEY" ] || [ -z "$EXCHANGE_ENCRYPTION_KEY" ]; then
+    echo "ERROR: SECRET_KEY and EXCHANGE_ENCRYPTION_KEY must be provided outside DEV_MODE"
+    exit 1
 fi
 
 export SECRET_KEY EXCHANGE_ENCRYPTION_KEY

@@ -1,8 +1,9 @@
 import os
+from typing import Annotated
 from urllib.parse import unquote, urlparse
 
-from pydantic import model_validator
-from pydantic_settings import BaseSettings
+from pydantic import field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode
 
 # =============================================================================
 # ENV: 环境模式 (dev / prod)
@@ -86,7 +87,11 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Exchange Gateway"
     APP_DESCRIPTION: str = "Enterprise Exchange/EWS Gateway - REST API for Microsoft Exchange Server"
 
-    CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+    CORS_ORIGINS: Annotated[list[str], NoDecode] = [
+        origin.strip()
+        for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+        if origin.strip()
+    ]
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_METHODS: list = ["*"]
     CORS_ALLOW_HEADERS: list = ["*"]
@@ -126,6 +131,10 @@ class Settings(BaseSettings):
     # 凭据加密密钥（生产环境必须设置）
     # 生成方式: python -c "from app.utils.crypto import generate_encryption_key; print(generate_encryption_key())"
     EXCHANGE_ENCRYPTION_KEY: str = get_secret("EXCHANGE_ENCRYPTION_KEY", "")
+    # EWS TLS 校验默认开启。仅在紧急兼容场景显式打开逃生阀。
+    EXCHANGE_TLS_INSECURE: bool = os.getenv("EXCHANGE_TLS_INSECURE", "false").lower() in ("true", "1", "yes")
+    EXCHANGE_CA_FILE: str = os.getenv("EXCHANGE_CA_FILE", "")
+    EXCHANGE_CA_DATA: str = os.getenv("EXCHANGE_CA_DATA", "")
     # API 速率限制（每分钟请求数）
     EXCHANGE_API_RATE_LIMIT: int = int(os.getenv("EXCHANGE_API_RATE_LIMIT", "100"))
     # API Key 默认过期天数
@@ -134,13 +143,34 @@ class Settings(BaseSettings):
     EXCHANGE_STREAM_CONNECTION_TIMEOUT_MINUTES: int = int(os.getenv("EXCHANGE_STREAM_CONNECTION_TIMEOUT_MINUTES", "30"))
     # Streaming 异常重连等待（秒），仅在异常时生效
     EXCHANGE_STREAM_ERROR_RETRY_SECONDS: int = int(os.getenv("EXCHANGE_STREAM_ERROR_RETRY_SECONDS", "5"))
+    # 单次 EWS HTTP 请求上限。必须显著小于网关代理的 60 秒读超时，
+    # 否则同步 requests 调用会在线程池内长期占用 EWS 会话。
+    EXCHANGE_EWS_REQUEST_TIMEOUT_SECONDS: float = float(os.getenv("EXCHANGE_EWS_REQUEST_TIMEOUT_SECONDS", "20"))
+    # EWS 的短暂繁忙响应最多等待多久。交互式 API 不应在服务端退避时
+    # 长时间占住唯一的 EWS session。
+    EXCHANGE_EWS_RETRY_MAX_WAIT_SECONDS: float = float(os.getenv("EXCHANGE_EWS_RETRY_MAX_WAIT_SECONDS", "5"))
+    # 列表和增量同步的端到端时限。它们必须在 Nginx 60 秒上游超时之前
+    # 结束，以便返回可识别的 504 而不是让 upstream 失联。
+    EXCHANGE_EMAIL_LIST_TIMEOUT_SECONDS: float = float(os.getenv("EXCHANGE_EMAIL_LIST_TIMEOUT_SECONDS", "45"))
+    EXCHANGE_EMAIL_SYNC_TIMEOUT_SECONDS: float = float(os.getenv("EXCHANGE_EMAIL_SYNC_TIMEOUT_SECONDS", "45"))
     # 邮件详情的 EWS 查询上限；超时会以标准 504 响应返回。
     EXCHANGE_EMAIL_DETAIL_TIMEOUT_SECONDS: float = float(os.getenv("EXCHANGE_EMAIL_DETAIL_TIMEOUT_SECONDS", "50"))
+
+    # 数据保留策略
+    AUDIT_LOG_RETENTION_DAYS: int = int(os.getenv("AUDIT_LOG_RETENTION_DAYS", "14"))
+    MAIL_LOG_BODY_RETENTION_DAYS: int = int(os.getenv("MAIL_LOG_BODY_RETENTION_DAYS", "7"))
 
     # Redis 配置（用于分布式速率限制）
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
     TORTOISE_ORM: dict = {}
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value):
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
     @model_validator(mode="after")
     def validate_and_build_config(self):
@@ -167,11 +197,39 @@ class Settings(BaseSettings):
                 "提示：本地开发可设置 DEV_MODE=true 跳过此验证"
             )
 
+        if not DEV_MODE and self.EXCHANGE_TLS_INSECURE:
+            import logging
+
+            logging.getLogger(__name__).error(
+                "EXCHANGE_TLS_INSECURE=true: production EWS TLS certificate and hostname validation is disabled"
+            )
+
         if not 1 <= self.EXCHANGE_STREAM_CONNECTION_TIMEOUT_MINUTES <= 30:
             raise ValueError("EXCHANGE_STREAM_CONNECTION_TIMEOUT_MINUTES 必须在 1 到 30 之间")
 
         if self.EXCHANGE_STREAM_ERROR_RETRY_SECONDS < 0:
             raise ValueError("EXCHANGE_STREAM_ERROR_RETRY_SECONDS 不能小于 0")
+
+        if not 1 <= self.EXCHANGE_EWS_REQUEST_TIMEOUT_SECONDS < 60:
+            raise ValueError("EXCHANGE_EWS_REQUEST_TIMEOUT_SECONDS 必须在 1 到 60 秒之间")
+
+        if not 0 <= self.EXCHANGE_EWS_RETRY_MAX_WAIT_SECONDS < 60:
+            raise ValueError("EXCHANGE_EWS_RETRY_MAX_WAIT_SECONDS 必须在 0 到 60 秒之间")
+
+        for name, timeout in (
+            ("EXCHANGE_EMAIL_LIST_TIMEOUT_SECONDS", self.EXCHANGE_EMAIL_LIST_TIMEOUT_SECONDS),
+            ("EXCHANGE_EMAIL_SYNC_TIMEOUT_SECONDS", self.EXCHANGE_EMAIL_SYNC_TIMEOUT_SECONDS),
+        ):
+            if not self.EXCHANGE_EWS_REQUEST_TIMEOUT_SECONDS < timeout < 60:
+                raise ValueError(
+                    f"{name} 必须大于 EXCHANGE_EWS_REQUEST_TIMEOUT_SECONDS 且小于 60 秒"
+                )
+
+        if not 7 <= self.AUDIT_LOG_RETENTION_DAYS <= 30:
+            raise ValueError("AUDIT_LOG_RETENTION_DAYS 必须在 7 到 30 之间")
+
+        if self.MAIL_LOG_BODY_RETENTION_DAYS < 1:
+            raise ValueError("MAIL_LOG_BODY_RETENTION_DAYS 必须大于 0")
 
         # 生产环境检查 CORS 配置
         if not DEV_MODE and "*" in self.CORS_ORIGINS:

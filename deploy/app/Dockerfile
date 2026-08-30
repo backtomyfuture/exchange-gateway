@@ -76,6 +76,7 @@ COPY --from=builder /opt/venv /opt/venv
 
 # 复制应用代码
 COPY app/ ./app/
+COPY migrations/ ./migrations/
 COPY scripts/ ./scripts/
 COPY deploy/app/entrypoint.sh .
 COPY deploy/app/entrypoint-worker.sh .
@@ -99,4 +100,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 
 EXPOSE 8000
 
-ENTRYPOINT ["./entrypoint.sh"]
+CMD ["./entrypoint.sh"]

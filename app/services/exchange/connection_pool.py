@@ -22,14 +22,21 @@ from app.log import logger
 from app.models.exchange import ExchangeAccount
 from app.services.exchange.circuit_breaker import CircuitBreaker
 from app.settings import settings
+from app.utils.async_helpers import run_sync_with_timeout
 from app.utils.crypto import get_crypto
 from app.utils.exchange_adapter import LegacySSLAdapter
 
-# 禁用 SSL 警告
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+# 仅在显式不安全模式下禁用 SSL 警告；严格模式保留告警。
+if settings.EXCHANGE_TLS_INSECURE:
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 使用自定义 Adapter 解决 SSLEOFError 和主机名不匹配
 BaseProtocol.HTTP_ADAPTER_CLS = LegacySSLAdapter
+# exchangelib defaults to 120 seconds per requests call, twice the proxy
+# timeout. Keep socket work bounded so cancellation can actually reclaim the
+# EWS session instead of leaving a worker thread blocked after the HTTP client
+# has already received a 502/504.
+BaseProtocol.TIMEOUT = settings.EXCHANGE_EWS_REQUEST_TIMEOUT_SECONDS
 
 
 class ExchangeConnection:
@@ -61,10 +68,12 @@ class ExchangeConnection:
     async def is_healthy(self) -> bool:
         """检查连接是否健康"""
         try:
-            # 尝试获取收件箱信息来验证连接
-            # 使用 run_in_executor 避免阻塞事件循环
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, lambda: self.account.inbox.total_count)
+            # 尝试获取收件箱信息来验证连接。健康检查同样是 EWS 网络 I/O，
+            # 不能绕过专用执行器和请求超时。
+            await run_sync_with_timeout(
+                lambda: self.account.inbox.total_count,
+                timeout=settings.EXCHANGE_EWS_REQUEST_TIMEOUT_SECONDS,
+            )
             return True
         except Exception as e:
             logger.warning(f"连接健康检查失败: {e}")
@@ -94,6 +103,11 @@ class ExchangeConnectionPool:
         self._warmup_tasks: dict[int, asyncio.Task] = {}
         # Per-account circuit breakers
         self._circuit_breakers: dict[int, CircuitBreaker] = {}
+        # exchangelib caches one Protocol (and, by default, one session) for a
+        # server + credential pair. Serialising one mailbox prevents a slow
+        # list or sync from filling worker threads while they all wait for that
+        # same synchronous session pool.
+        self._operation_locks: dict[int, asyncio.Lock] = {}
 
     @property
     def crypto(self):
@@ -116,9 +130,6 @@ class ExchangeConnectionPool:
             # 构建完整用户名
             full_username = f"{domain}\\{db_account.username}"
 
-            # 放到线程池中执行
-            loop = asyncio.get_running_loop()
-
             def create_account_ops():
                 # 创建凭据
                 credentials = Credentials(full_username, password)
@@ -128,7 +139,12 @@ class ExchangeConnectionPool:
                     server=server,
                     credentials=credentials,
                     auth_type=NTLM,
-                    retry_policy=FaultTolerance(max_wait=60),
+                    retry_policy=FaultTolerance(max_wait=settings.EXCHANGE_EWS_RETRY_MAX_WAIT_SECONDS),
+                    # The application serialises operations per mailbox below.
+                    # Be explicit about exchangelib's shared protocol capacity
+                    # so a future library default cannot introduce a request
+                    # stampede for the same credentials.
+                    max_connections=1,
                 )
 
                 # 创建账户
@@ -136,7 +152,10 @@ class ExchangeConnectionPool:
                     primary_smtp_address=db_account.email, config=config, autodiscover=False, access_type=DELEGATE
                 )
 
-            account = await loop.run_in_executor(None, create_account_ops)
+            account = await run_sync_with_timeout(
+                create_account_ops,
+                timeout=settings.EXCHANGE_EWS_REQUEST_TIMEOUT_SECONDS,
+            )
 
             logger.info(f"Exchange 连接创建成功: {db_account.email}")
             return ExchangeConnection(account, db_account.id)
@@ -153,6 +172,15 @@ class ExchangeConnectionPool:
                 recovery_timeout=60.0,
             )
         return self._circuit_breakers[account_id]
+
+    async def get_operation_lock(self, account_id: int) -> asyncio.Lock:
+        """Return the shared lock for synchronous EWS work on one mailbox."""
+        async with self._lock:
+            lock = self._operation_locks.get(account_id)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._operation_locks[account_id] = lock
+            return lock
 
     async def get_connection(self, account_id: int) -> ExchangeConnection:
         """Get a connection, protected by per-account circuit breaker."""
@@ -439,11 +467,13 @@ async def get_exchange_connection(account_id: int):
             ...
     """
     pool = get_connection_pool()
-    conn = await pool.get_connection(account_id)
-    try:
-        yield conn
-    except BaseException:
-        await pool.discard_connection(conn)
-        raise
-    else:
-        await pool.release_connection(conn)
+    operation_lock = await pool.get_operation_lock(account_id)
+    async with operation_lock:
+        conn = await pool.get_connection(account_id)
+        try:
+            yield conn
+        except BaseException:
+            await pool.discard_connection(conn)
+            raise
+        else:
+            await pool.release_connection(conn)

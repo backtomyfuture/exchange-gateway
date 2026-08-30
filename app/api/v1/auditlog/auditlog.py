@@ -46,5 +46,10 @@ async def get_audit_log_list(
     queryset = AuditLog.filter(q)
     total = await queryset.count()
     audit_log_objs = await queryset.order_by("-created_at").offset((page - 1) * page_size).limit(page_size)
-    data = [await audit_log.to_dict() for audit_log in audit_log_objs]
+    # Do not expose legacy body columns, including content written before the
+    # metadata-only audit policy was introduced.
+    data = [
+        await audit_log.to_dict(exclude_fields=["request_args", "response_body"])
+        for audit_log in audit_log_objs
+    ]
     return SuccessExtra(data=data, total=total, page=page, page_size=page_size)

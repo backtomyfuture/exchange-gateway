@@ -26,17 +26,19 @@ SECRET_KEY="$(read_secret SECRET_KEY)"
 EXCHANGE_ENCRYPTION_KEY="$(read_secret EXCHANGE_ENCRYPTION_KEY)"
 export SECRET_KEY EXCHANGE_ENCRYPTION_KEY
 
-# 生成缺失的安全密钥
-if [ -z "$SECRET_KEY" ]; then
-    echo "WARNING: SECRET_KEY not set, generating one..."
-    export SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
-    echo "  Generated SECRET_KEY: ${SECRET_KEY:0:16}..."
-fi
-
-if [ -z "$EXCHANGE_ENCRYPTION_KEY" ]; then
-    echo "WARNING: EXCHANGE_ENCRYPTION_KEY not set, generating one..."
-    export EXCHANGE_ENCRYPTION_KEY=$(python3 -c "import base64, os; print(base64.b64encode(os.urandom(32)).decode())")
-    echo "  Generated EXCHANGE_ENCRYPTION_KEY: ${EXCHANGE_ENCRYPTION_KEY:0:16}..."
+# 仅开发模式允许生成临时密钥；生产必须注入稳定密钥。
+if [ "${DEV_MODE:-false}" = "true" ] || [ "${DEV_MODE:-false}" = "1" ] || [ "${DEV_MODE:-false}" = "yes" ]; then
+    if [ -z "$SECRET_KEY" ]; then
+        echo "WARNING: SECRET_KEY not set, generating one (development only)..."
+        export SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+    fi
+    if [ -z "$EXCHANGE_ENCRYPTION_KEY" ]; then
+        echo "WARNING: EXCHANGE_ENCRYPTION_KEY not set, generating one (development only)..."
+        export EXCHANGE_ENCRYPTION_KEY=$(python3 -c "import base64, os; print(base64.b64encode(os.urandom(32)).decode())")
+    fi
+elif [ -z "$SECRET_KEY" ] || [ -z "$EXCHANGE_ENCRYPTION_KEY" ]; then
+    echo "ERROR: SECRET_KEY and EXCHANGE_ENCRYPTION_KEY must be provided outside DEV_MODE"
+    exit 1
 fi
 
 echo "Starting ARQ worker..."

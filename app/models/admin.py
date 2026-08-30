@@ -87,5 +87,6 @@ class AuditLog(BaseModel, TimestampMixin):
     path = fields.CharField(max_length=255, default="", description="请求路径", db_index=True)
     status = fields.IntField(default=-1, description="状态码", db_index=True)
     response_time = fields.IntField(default=0, description="响应时间(单位ms)", db_index=True)
+    request_id = fields.CharField(max_length=64, null=True, description="请求ID", db_index=True)
     request_args = fields.JSONField(null=True, description="请求参数")
     response_body = fields.JSONField(null=True, description="返回数据")

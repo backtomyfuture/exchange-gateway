@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -132,6 +133,7 @@ async def test_context_manager_discards_connection_after_timeout():
     """超时后的 EWS 线程可能仍在运行，连接不可再次归还池中。"""
     pool = MagicMock()
     conn = MagicMock()
+    pool.get_operation_lock = AsyncMock(return_value=asyncio.Lock())
     pool.get_connection = AsyncMock(return_value=conn)
     pool.release_connection = AsyncMock()
     pool.discard_connection = AsyncMock()
@@ -151,6 +153,7 @@ async def test_context_manager_discards_connection_after_timeout():
 async def test_context_manager_releases_connection_after_success():
     pool = MagicMock()
     conn = MagicMock()
+    pool.get_operation_lock = AsyncMock(return_value=asyncio.Lock())
     pool.get_connection = AsyncMock(return_value=conn)
     pool.release_connection = AsyncMock()
     pool.discard_connection = AsyncMock()
@@ -161,3 +164,47 @@ async def test_context_manager_releases_connection_after_success():
 
     pool.release_connection.assert_awaited_once_with(conn)
     pool.discard_connection.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_context_manager_serializes_operations_for_one_account():
+    """One mailbox cannot concurrently consume exchangelib's shared session."""
+    pool = MagicMock()
+    conn = MagicMock()
+    operation_lock = asyncio.Lock()
+    pool.get_operation_lock = AsyncMock(return_value=operation_lock)
+    pool.get_connection = AsyncMock(return_value=conn)
+    pool.release_connection = AsyncMock()
+    pool.discard_connection = AsyncMock()
+
+    first_entered = asyncio.Event()
+    second_attempted = asyncio.Event()
+    release_first = asyncio.Event()
+    order = []
+
+    async def first_operation():
+        async with get_exchange_connection(1):
+            order.append("first-entered")
+            first_entered.set()
+            await release_first.wait()
+            order.append("first-finished")
+
+    async def second_operation():
+        await first_entered.wait()
+        second_attempted.set()
+        async with get_exchange_connection(1):
+            order.append("second-entered")
+
+    with patch("app.services.exchange.connection_pool.get_connection_pool", return_value=pool):
+        first_task = asyncio.create_task(first_operation())
+        await first_entered.wait()
+        second_task = asyncio.create_task(second_operation())
+        await second_attempted.wait()
+        await asyncio.sleep(0)
+
+        assert pool.get_connection.await_count == 1
+
+        release_first.set()
+        await asyncio.gather(first_task, second_task)
+
+    assert order == ["first-entered", "first-finished", "second-entered"]
